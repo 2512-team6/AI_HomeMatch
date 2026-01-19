@@ -1,3 +1,5 @@
 core/.venv
 core/dataset
 core/pages
+core/.env
+core/json

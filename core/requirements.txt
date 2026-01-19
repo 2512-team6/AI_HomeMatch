@@ -1,4 +1,6 @@
-requests
 ipykernel
+pytesseract
+pillow
 pymupdf
-pdfplumber
+pymysql
+python-dotenv
