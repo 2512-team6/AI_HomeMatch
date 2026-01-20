@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:mariadb://localhost:3306/homematch
-    username: root
-    password: 123
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
     driver-class-name: org.mariadb.jdbc.Driver
 
   jpa:
