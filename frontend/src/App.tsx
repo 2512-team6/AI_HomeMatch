@@ -11,6 +11,7 @@ import MoveOutPage from './pages/MoveOutPage'
 import ChatbotPage from './pages/ChatbotPage'
 import MyPage from './pages/MyPage'
 import Layout from './components/Layout'
+import Signup from './pages/Signup'
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
       <Route path="/moveout" element={<Layout><MoveOutPage /></Layout>} />
       <Route path="/chatbot" element={<Layout><ChatbotPage /></Layout>} />
       <Route path="/mypage" element={<Layout><MyPage /></Layout>} />
+      <Route path="/signup" element={<Signup />} />
     </Routes>
   )
 }
