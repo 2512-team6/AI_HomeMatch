@@ -1,4 +1,4 @@
-import { Upload, Download, Calendar } from 'lucide-react'
+import { Upload } from 'lucide-react'
 
 export default function ResidencyManagementPage() {
   return (

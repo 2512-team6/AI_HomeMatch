@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ChevronDown, CheckCircle, AlertTriangle } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
 export default function PropertyListPage() {
   const properties = [
