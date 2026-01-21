@@ -22,7 +22,7 @@ export default function LandingPage() {
                 Login
               </Link>
               <Link
-                to="/login"
+                to="/signup"
                 className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium"
               >
                 Signup
