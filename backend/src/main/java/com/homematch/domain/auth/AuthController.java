@@ -21,9 +21,19 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        System.out.println(">>> 로그인 요청 이메일: " + request.getEmail()); // 이 로그가 찍히는지 확인
+        System.out.println(">>> 로그인 요청 이메일: " + request.getEmail());
+        
+        // 1. 토큰 생성
         String token = loginService.login(request);
-        return ResponseEntity.ok(Map.of("accessToken", token));
+        
+        // 2. 닉네임 가져오기 (추가된 부분)
+        String nickname = userService.getNicknameByEmail(request.getEmail());
+
+        // 3. 응답 데이터 구성 (nickname 추가)
+        return ResponseEntity.ok(Map.of(
+            "accessToken", token,
+            "nickname", nickname
+        ));
     }
 
     @PostMapping("/logout")

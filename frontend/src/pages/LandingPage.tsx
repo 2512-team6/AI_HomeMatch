@@ -1,7 +1,30 @@
-import { Link } from 'react-router-dom'
-import { FileText, Lightbulb, Users, CheckCircle, House, Shield, Gavel } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { FileText, Lightbulb, Users, CheckCircle, House, Shield, Gavel, LayoutDashboard, LogOut } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 export default function LandingPage() {
+
+  const navigate = useNavigate()
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [nickname, setNickname] = useState('')
+
+  useEffect(() => {
+    // 토큰이 있으면 로그인 상태로 간주
+    const token = localStorage.getItem('accessToken')
+    const savedNickname = localStorage.getItem('nickname')
+    if (token) {
+      setIsLoggedIn(true)
+      setNickname(savedNickname || '사용자')
+    }
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('nickname')
+    setIsLoggedIn(false)
+    navigate('/')
+  }
+
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -14,19 +37,53 @@ export default function LandingPage() {
               </div>
               <span className="text-xl font-bold text-gray-900">HomeMatch</span>
             </div>
+
             <div className="flex items-center space-x-4">
-              <Link
-                to="/login"
-                className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium"
-              >
-                Login
-              </Link>
-              <Link
-                to="/signup"
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium"
-              >
-                Signup
-              </Link>
+              {isLoggedIn ? (
+                // 로그인 상태일 때 헤더 버튼
+                <>
+                  <div className="flex items-center space-x-4">
+                    {/* ✅ 닉네임 표시부 디자인 수정 */}
+                    <div className="flex flex-col items-end">
+                      <span className="text-sm font-semibold text-gray-900">{nickname}님</span>
+                      <span className="text-xs text-primary-600">반가워요!</span>
+                    </div>
+                    
+                    <Link
+                      to="/home"
+                      className="flex items-center space-x-1 px-4 py-2 bg-primary-50 text-primary-600 hover:bg-primary-100 rounded-lg font-medium transition-colors"
+                    >
+                      <LayoutDashboard className="w-4 h-4" />
+                      <span>대시보드</span>
+                    </Link>
+
+                    <button
+                      onClick={handleLogout}
+                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                      title="로그아웃"
+                    >
+                      <LogOut className="w-5 h-5" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                // 로그아웃 상태일 때 헤더 버튼
+                <>
+                  <Link
+                    to="/login"
+                    className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium"
+                  >
+                    Signup
+                  </Link>
+                </>
+              )}
+
             </div>
           </div>
         </div>
@@ -66,7 +123,7 @@ export default function LandingPage() {
             
             {/* 매물 찾기 - 메인 아이콘 버튼 */}
             <Link
-              to="/properties"
+              to="/home"
               className="
                 group
                 flex flex-col items-center
