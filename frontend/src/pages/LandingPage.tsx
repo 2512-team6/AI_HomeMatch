@@ -33,28 +33,111 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-primary-50 to-white py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-5xl font-bold text-gray-900 mb-6">
-            복잡한 주거 문제를 스마트하게 해결하세요
-          </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            계약부터 입주, 퇴실까지 HomeMatch가 모든 과정을 함께합니다.
-          </p>
-          <div className="flex justify-center space-x-4">
+      <section className="relative bg-gradient-to-br from-indigo-50 via-white to-blue-50 py-28 overflow-hidden">
+        {/* 배경 장식 요소 */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 right-10 w-72 h-72 bg-indigo-100 rounded-full blur-3xl opacity-30"></div>
+          <div className="absolute bottom-10 left-10 w-96 h-96 bg-blue-100 rounded-full blur-3xl opacity-20"></div>
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          
+          {/* 헤더 영역 */}
+          <div className="mb-14">
+            <h1 className="text-5xl md:text-6xl font-bold text-gray-900 leading-tight mb-6">
+              
+              <div className="mb-4">
+                복잡한 주거 문제를
+              </div>
+
+              <div className="text-indigo-600">
+                스마트하게 해결하세요
+              </div>
+
+            </h1>
+
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              계약부터 입주, 퇴실까지 HomeMatch가 모든 과정을 함께합니다
+            </p>
+          </div>
+
+          {/* 아이콘 버튼 영역 */}
+          <div className="flex justify-center gap-20">
+            
+            {/* 매물 찾기 - 메인 아이콘 버튼 */}
             <Link
               to="/properties"
-              className="px-8 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium text-lg"
+              className="
+                group
+                flex flex-col items-center
+                gap-4
+              "
             >
-              집 찾아보기 →
+              {/* 아이콘 버튼 */}
+              <div
+                className="
+                  w-28 h-28
+                  rounded-full
+                  bg-white
+                  shadow-md
+                  ring-2 ring-indigo-200
+                  group-hover:shadow-xl
+                  group-hover:-translate-y-1
+                  transition-all duration-100
+                  flex items-center justify-center
+                "
+              >
+                <House className="w-12 h-12 text-indigo-600" />
+              </div>
+
+              {/* 텍스트 */}
+              <h3 className="text-2xl font-bold text-indigo-600">
+                매물 찾기
+              </h3>
+              <p className="text-base text-gray-600 text-center leading-relaxed">
+                조건에 맞는 집을 찾고<br />
+                계약까지 안전하게 진행하세요
+              </p>
             </Link>
+
+            {/* 계약서 검증 - 서브 아이콘 버튼 */}
             <Link
               to="/contract/review"
-              className="px-8 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-lg"
+              className="
+                group
+                flex flex-col items-center
+                gap-4
+              "
             >
-              계약 점검만 해보기
+              {/* 아이콘 버튼 */}
+              <div
+                className="
+                  w-28 h-28
+                  rounded-full
+                  bg-white
+                  shadow-md
+                  ring-1 ring-gray-300
+                  group-hover:shadow-xl
+                  group-hover:-translate-y-1
+                  transition-all duration-200
+                  flex items-center justify-center
+                "
+              >
+                <FileText className="w-12 h-12 text-gray-600" />
+              </div>
+
+              {/* 텍스트 */}
+              <h3 className="text-2xl font-bold text-indigo-600">
+                계약서 검증
+              </h3>
+              <p className="text-base text-gray-600 text-center leading-relaxed">
+                이미 계약서가 있다면<br />
+                AI로 위험 조항을 먼저 확인하세요
+              </p>
             </Link>
+
           </div>
+          {/* 아이콘 버튼 영역 끝 */}
         </div>
       </section>
 
