@@ -34,6 +34,8 @@ dependencies {
 
 	implementation 'org.mariadb.jdbc:mariadb-java-client'
 
+	implementation 'io.github.cdimascio:dotenv-java:3.0.0'
+
 	compileOnly 'org.projectlombok:lombok'
 
 	annotationProcessor 'org.projectlombok:lombok'
@@ -47,5 +49,9 @@ dependencies {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+    useJUnitPlatform()
+    // 테스트 실행 시 .env 대신 직접 환경 변수 주입
+    environment "DB_URL", ${DB_URL}
+    environment "DB_USER", ${DB_USER}
+    environment "DB_PASSWORD", ${DB_PASSWORD}
 }
