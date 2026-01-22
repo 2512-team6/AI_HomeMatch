@@ -1,33 +1,41 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Home, Building2, FileText, Building, Scale, MessageCircle, Settings } from 'lucide-react'
+import { useSidebar } from '../contexts/SidebarContext'
 
 export default function Sidebar() {
   const location = useLocation()
+  const { isSidebarOpen, closeSidebar } = useSidebar()
 
   const navItems = [
     { path: '/home', label: 'Home', icon: Home },
-    { path: '/properties', label: 'Property List', icon: Building2 },
-    { path: '/contract/review', label: 'Contract Management', icon: FileText },
-    { path: '/residency', label: 'Residency Management', icon: Building },
-    { path: '/moveout', label: 'Move-out & Disputes', icon: Scale },
+    { path: '/properties', label: '집 찾기', icon: Building2 },
+    { path: '/contract/review', label: '계약서 점검', icon: FileText },
+    { path: '/residency', label: '거주 관리', icon: Building },
+    { path: '/moveout', label: '퇴실 관리', icon: Scale },
   ]
 
   const bottomItems = [
-    { path: '/chatbot', label: 'Chatbot Assistant', icon: MessageCircle },
-    { path: '/mypage', label: 'MyPage / Settings', icon: Settings },
+    { path: '/chatbot', label: '챗봇', icon: MessageCircle },
+    { path: '/mypage', label: '설정', icon: Settings },
   ]
 
   return (
-    <aside className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-white border-r border-gray-200 overflow-y-auto">
+    <>
+      {/* 모바일 오버레이 */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden transition-opacity"
+          onClick={closeSidebar}
+        />
+      )}
+      
+      {/* 사이드바 */}
+      <aside
+        className={`fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-white border-r border-gray-200 overflow-y-auto z-40 transform transition-transform duration-300 ease-in-out ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
       <div className="p-4">
-        <div className="mb-6">
-          <Link to="/home" className="flex items-center space-x-2 mb-4">
-            <div className="w-8 h-8 bg-primary-600 rounded flex items-center justify-center">
-              <span className="text-white font-bold">H</span>
-            </div>
-            <span className="text-lg font-bold text-gray-900">HomeMatch</span>
-          </Link>
-        </div>
         <nav className="space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -36,6 +44,7 @@ export default function Sidebar() {
               <Link
                 key={item.path}
                 to={item.path}
+                onClick={closeSidebar}
                 className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-primary-50 text-primary-700'
@@ -56,6 +65,7 @@ export default function Sidebar() {
               <Link
                 key={item.path}
                 to={item.path}
+                onClick={closeSidebar}
                 className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-primary-50 text-primary-700'
@@ -70,6 +80,7 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   )
 }
 
