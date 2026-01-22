@@ -1,7 +1,7 @@
 plugins {
 	id 'java'
 	id 'war'
-	id 'org.springframework.boot' version '4.0.1'
+	id 'org.springframework.boot' version '3.2.1'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -26,26 +26,78 @@ repositories {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    // Web & Security
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    
+    // DB (MariaDB & JPA)
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.mariadb.jdbc:mariadb-java-client'
 
-	implementation 'org.springframework.boot:spring-boot-starter-security'
+    // 환경 변수 설정 (.env)
+    implementation 'io.github.cdimascio:dotenv-java:3.0.0'
 
-	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // JWT (jjwt)
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 
-	implementation 'org.mariadb.jdbc:mariadb-java-client'
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
 
-	compileOnly 'org.projectlombok:lombok'
+    // War 배포용 내장 톰캣 설정
+    providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
 
-	annotationProcessor 'org.projectlombok:lombok'
+    // Test (하나의 스타터로 통합 관리 권장)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    
+    // 테스트 시에도 dotenv-java를 사용하도록 통일
+    testImplementation 'io.github.cdimascio:dotenv-java:3.0.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
 
-	providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat-runtime'
 
-	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+// .env 파일을 읽어서 Map 형태로 반환하는 함수
+// Gradle 빌드 스크립트에서 dotenv-java 라이브러리를 직접 사용할 수 없으므로
+// Groovy로 .env 파일을 직접 파싱합니다
+def loadEnvFile() {
+    def envFile = file('.env')  // 프로젝트 루트의 .env 파일 참조
+    def env = [:]  // 환경 변수를 저장할 Map 초기화
+    
+    if (envFile.exists()) {
+        // .env 파일이 존재하는 경우 각 줄을 읽어서 처리
+        envFile.readLines().each { line ->
+            def trimmed = line.trim()  // 앞뒤 공백 제거
+            
+            // 빈 줄이 아니고 주석(#)으로 시작하지 않는 경우만 처리
+            if (!trimmed.isEmpty() && !trimmed.startsWith('#')) {
+                // KEY=VALUE 형식으로 분리 (첫 번째 '=' 기준으로만 분리)
+                def parts = trimmed.split('=', 2)
+                if (parts.length == 2) {
+                    // 키와 값을 추출하고, 값의 앞뒤 따옴표 제거
+                    env[parts[0].trim()] = parts[1].trim().replaceAll(/^["']|["']$/, '')
+                }
+            }
+        }
+    }
+    return env  // 파싱된 환경 변수 Map 반환
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+    useJUnitPlatform()
+	
+    // 테스트 실행 시 데이터베이스 연결 정보를 환경 변수로 주입
+    // .env 파일에서 값을 읽어오고, 없으면 시스템 환경 변수를 사용
+    def env = loadEnvFile()
+    
+    // DB_URL 환경 변수 설정 (우선순위: .env 파일 > 시스템 환경 변수 > 빈 문자열)
+    environment "DB_URL", env.get("DB_URL") ?: System.getenv('DB_URL') ?: ''
+    
+    // DB_USER 환경 변수 설정 (우선순위: .env 파일 > 시스템 환경 변수 > 빈 문자열)
+    environment "DB_USER", env.get("DB_USER") ?: System.getenv('DB_USER') ?: ''
+    
+    // DB_PASSWORD 환경 변수 설정 (우선순위: .env 파일 > 시스템 환경 변수 > 빈 문자열)
+    environment "DB_PASSWORD", env.get("DB_PASSWORD") ?: System.getenv('DB_PASSWORD') ?: ''
 }

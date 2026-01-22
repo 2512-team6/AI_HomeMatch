@@ -4,3 +4,7 @@ pillow
 pymupdf
 pymysql
 python-dotenv
+chromadb
+sentence-transformers
+llama-cpp-python
+ollama

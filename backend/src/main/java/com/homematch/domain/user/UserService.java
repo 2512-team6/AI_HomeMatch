@@ -33,4 +33,12 @@ public class UserService {
 
         userRepository.save(user);
     }
+
+    @Transactional(readOnly = true)
+    public String getNicknameByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .map(User::getNickname)
+                .orElse("사용자"); // 유저를 찾지 못할 경우 기본값
+    }
+
 }

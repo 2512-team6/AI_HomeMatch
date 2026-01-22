@@ -3,3 +3,5 @@ dataset
 pages
 .env
 json
+vectorDB/chroma_store
+vectorDB/__pycache__

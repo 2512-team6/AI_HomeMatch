@@ -5,6 +5,9 @@ import com.homematch.domain.auth.dto.SignupRequest;
 import com.homematch.domain.user.UserService;
 
 import lombok.RequiredArgsConstructor;
+
+import java.util.Map;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,14 +21,26 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        loginService.login(request);
-        return ResponseEntity.ok().build();
+        System.out.println(">>> 로그인 요청 이메일: " + request.getEmail());
+        
+        // 1. 토큰 생성
+        String token = loginService.login(request);
+        
+        // 2. 닉네임 가져오기 (추가된 부분)
+        String nickname = userService.getNicknameByEmail(request.getEmail());
+
+        // 3. 응답 데이터 구성 (nickname 추가)
+        return ResponseEntity.ok(Map.of(
+            "accessToken", token,
+            "nickname", nickname
+        ));
     }
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout() {
         return ResponseEntity.ok().build();
     }
+
 
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@RequestBody SignupRequest request) {
