@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS listings (
 CREATE TABLE IF NOT EXISTS entry_status_records (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
-    image_url VARCHAR(500) NOT NULL,
+    image_url MEDIUMTEXT NOT NULL,
     record_type VARCHAR(50) NOT NULL,
     record_date DATE NOT NULL,
     description TEXT,
