@@ -123,7 +123,7 @@ export default function LandingPage() {
             
             {/* 매물 찾기 - 메인 아이콘 버튼 */}
             <Link
-              to="/home"
+              to="/properties"
               className="
                 group
                 flex flex-col items-center

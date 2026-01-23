@@ -151,7 +151,7 @@ export default function ContractReviewPage() {
               <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 mb-2">계약서 이미지를 업로드하세요</p>
               <p className="text-sm text-gray-500 mb-4">
-                JPG, PNG, PDF 파일을 지원합니다
+                JPG, PNG 파일을 지원합니다
               </p>
               <button className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                 파일 선택

@@ -1,8 +1,74 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MapPin } from 'lucide-react'
+import { useParams } from 'react-router-dom'
+
+interface ListingDetail {
+  listingId: number
+  owner: string
+  title: string
+  address: string
+  lat: number
+  lng: number
+  priceDeposit: number
+  leaseType: string
+  priceRent: number | null
+  mCost: number | null
+  areaM2: number
+  builtYear: number | null
+  floor: number | null
+  floorBuilding: number | null
+  rooms: number | null
+  bathrooms: number | null
+  parking: boolean
+  moveInDate: string | null
+  createdAt: string
+}
 
 export default function PropertyDetailPage() {
+  const { id } = useParams<{ id: string }>()
   const [activeTab, setActiveTab] = useState('basic')
+  const [listing, setListing] = useState<ListingDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (id) {
+      fetchListingDetail(parseInt(id))
+    }
+  }, [id])
+
+  const fetchListingDetail = async (listingId: number) => {
+    try {
+      setLoading(true)
+      const response = await fetch(`http://localhost:8080/api/listings/${listingId}`)
+      if (!response.ok) {
+        throw new Error('매물 정보를 불러오는데 실패했습니다.')
+      }
+      const data = await response.json()
+      setListing(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.')
+      console.error('매물 상세 정보 로딩 오류:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatPrice = () => {
+    if (!listing) return ''
+    if (listing.leaseType === '전세') {
+      return `전세 ${(listing.priceDeposit / 10000).toFixed(0)}만원`
+    } else {
+      const deposit = (listing.priceDeposit / 10000).toFixed(0)
+      const rent = listing.priceRent ? `${listing.priceRent}만원` : ''
+      return `월세 ${rent} / 보증금 ${deposit}만원`
+    }
+  }
+
+  const formatArea = () => {
+    if (!listing) return ''
+    return `${listing.areaM2.toFixed(0)}m² (${(listing.areaM2 / 3.3).toFixed(1)}평)`
+  }
 
   const tabs = [
     { id: 'basic', label: '기본 정보' },
@@ -11,9 +77,31 @@ export default function PropertyDetailPage() {
     { id: 'contract', label: '계약서 AI 점검' },
   ]
 
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-600">매물 정보를 불러오는 중...</p>
+      </div>
+    )
+  }
+
+  if (error || !listing) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-600">{error || '매물 정보를 찾을 수 없습니다.'}</p>
+        <button
+          onClick={() => id && fetchListingDetail(parseInt(id))}
+          className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+        >
+          다시 시도
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900">매물 상세 정보</h1>
+      <h1 className="text-3xl font-bold text-gray-900">{listing.title}</h1>
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
@@ -49,21 +137,42 @@ export default function PropertyDetailPage() {
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-4">매물 개요</h2>
               <div className="text-3xl font-bold text-primary-600 mb-6">
-                월세 100만원 / 보증금 1억원
+                {formatPrice()}
               </div>
               <div className="space-y-3">
                 <div className="flex items-center space-x-2">
                   <MapPin className="w-5 h-5 text-gray-400" />
-                  <span className="text-gray-700">위치: 서울시 강남구 테헤란로 123</span>
+                  <span className="text-gray-700">위치: {listing.address}</span>
                 </div>
-                <div className="text-gray-700">면적: 84m² (25평)</div>
-                <div className="text-gray-700">층수: 15층 / 20층</div>
-                <div className="text-gray-700">입주 가능일: 2024년 7월 1일 이후</div>
+                <div className="text-gray-700">면적: {formatArea()}</div>
+                {listing.floor && listing.floorBuilding && (
+                  <div className="text-gray-700">층수: {listing.floor}층 / {listing.floorBuilding}층</div>
+                )}
+                {listing.rooms && (
+                  <div className="text-gray-700">방 개수: {listing.rooms}개</div>
+                )}
+                {listing.bathrooms && (
+                  <div className="text-gray-700">욕실: {listing.bathrooms}개</div>
+                )}
+                {listing.mCost && (
+                  <div className="text-gray-700">관리비: {listing.mCost.toLocaleString()}원</div>
+                )}
+                {listing.parking && (
+                  <div className="text-gray-700">주차: 가능</div>
+                )}
+                {listing.moveInDate && (
+                  <div className="text-gray-700">입주 가능일: {new Date(listing.moveInDate).toLocaleDateString('ko-KR')}</div>
+                )}
+                {listing.builtYear && (
+                  <div className="text-gray-700">건축연도: {listing.builtYear}년</div>
+                )}
+                <div className="text-gray-700">임대인: {listing.owner}</div>
               </div>
             </div>
           </div>
           <div className="bg-gray-100 rounded-lg p-8 text-center">
             <p className="text-gray-600">지도 정보 준비 중입니다. (실제 지도 API 연동 예정)</p>
+            <p className="text-sm text-gray-500 mt-2">위도: {listing.lat}, 경도: {listing.lng}</p>
           </div>
         </div>
       )}
@@ -73,17 +182,21 @@ export default function PropertyDetailPage() {
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <h3 className="text-xl font-bold text-gray-900 mb-4">건물 요약</h3>
             <div className="grid md:grid-cols-3 gap-4">
+              {listing.builtYear && (
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">준공 연도</div>
+                  <div className="font-bold">{listing.builtYear}년</div>
+                </div>
+              )}
+              {listing.floorBuilding && (
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">건물 총 층수</div>
+                  <div className="font-bold">{listing.floorBuilding}층</div>
+                </div>
+              )}
               <div>
-                <div className="text-sm text-gray-600 mb-1">준공 연도</div>
-                <div className="font-bold">2015년</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600 mb-1">세대 수</div>
-                <div className="font-bold">120세대</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600 mb-1">최근 거래</div>
-                <div className="font-bold">2023.10</div>
+                <div className="text-sm text-gray-600 mb-1">등록 일시</div>
+                <div className="font-bold">{new Date(listing.createdAt).toLocaleDateString('ko-KR')}</div>
               </div>
             </div>
           </div>

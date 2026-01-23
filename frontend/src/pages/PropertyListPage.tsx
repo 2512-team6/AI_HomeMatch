@@ -1,12 +1,180 @@
 import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { ChevronDown, Search, SlidersHorizontal, MapPin, Home, DollarSign, Calendar, Shield, Heart } from 'lucide-react'
 
+interface Listing {
+  listingId: number
+  title: string
+  address: string
+  priceDeposit: number
+  leaseType: string
+  priceRent: number | null
+  mCost: number | null
+  areaM2: number
+  floor: number | null
+  floorBuilding: number | null
+  rooms: number | null
+  parking: boolean
+  moveInDate: string | null
+}
+
+interface FilterState {
+  priceType: '전세' | '월세' | 'all'
+  minDeposit: number
+  maxDeposit: number
+  minRent: number
+  maxRent: number
+  leaseType: string | null
+  parking: boolean | null
+  minRooms: number
+  maxRooms: number
+  minArea: number
+  maxArea: number
+}
+
+// 필터 범위 상수
+const FILTER_RANGES = {
+  deposit: { min: 0, max: 50000 }, // 만원 단위 (0 ~ 5억)
+  rent: { min: 0, max: 500 }, // 만원 단위 (0 ~ 500만원)
+  rooms: { min: 1, max: 10 },
+  area: { min: 10, max: 200 }, // m²
+}
+
+
 export default function PropertyListPage() {
-  const properties = [
-    { id: 1, type: '원룸', size: '33m²', location: '강남구 역삼동', price: '전세 2억 5천만원', features: ['반려동물 가능', '주차 가능'], badge: { text: '안전 매물', color: 'green' } },
-    { id: 2, type: '아파트', size: '84m²', location: '서초구 반포동', price: '월세 100만원 / 보증금 1억', features: ['주차 가능', '엘리베이터'], badge: { text: '근저당 높음', color: 'orange' } },
-    { id: 3, type: '오피스텔', size: '45m²', location: '영등포구 여의도동', price: '전세 1억 8천만원', features: ['풀옵션'], badge: { text: '소음 주의', color: 'yellow' } },
-  ]
+  const [properties, setProperties] = useState<Listing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [filters, setFilters] = useState<FilterState>({
+    priceType: 'all',
+    minDeposit: FILTER_RANGES.deposit.min,
+    maxDeposit: FILTER_RANGES.deposit.max,
+    minRent: FILTER_RANGES.rent.min,
+    maxRent: FILTER_RANGES.rent.max,
+    leaseType: null,
+    parking: null,
+    minRooms: FILTER_RANGES.rooms.min,
+    maxRooms: FILTER_RANGES.rooms.max,
+    minArea: FILTER_RANGES.area.min,
+    maxArea: FILTER_RANGES.area.max,
+  })
+
+  useEffect(() => {
+  const timer = setTimeout(() => {
+    fetchProperties()
+  }, 300)
+
+  return () => clearTimeout(timer)
+}, [filters])
+
+
+  const fetchProperties = async () => {
+    try {
+      setLoading(true)
+      
+      // 필터 파라미터 구성
+      const params = new URLSearchParams()
+      
+      if (filters.leaseType && filters.leaseType !== 'all') {
+        params.append('leaseType', filters.leaseType)
+      }
+      
+      // 보증금 필터 (기본값이 아닐 때만 전송)
+      if (filters.minDeposit !== FILTER_RANGES.deposit.min) {
+        const minDeposit = filters.minDeposit * 10000 // 만원 단위를 원 단위로 변환
+        params.append('minDeposit', minDeposit.toString())
+      }
+      
+      if (filters.maxDeposit !== FILTER_RANGES.deposit.max) {
+        const maxDeposit = filters.maxDeposit * 10000
+        params.append('maxDeposit', maxDeposit.toString())
+      }
+      
+      // 월세 금액 필터 (월세일 때만 적용)
+      if (filters.leaseType === '월세') {
+        if (filters.minRent !== FILTER_RANGES.rent.min) {
+          const minRent = filters.minRent * 10000 // 만원 단위를 원 단위로 변환
+          params.append('minRent', minRent.toString())
+        }
+        
+        if (filters.maxRent !== FILTER_RANGES.rent.max) {
+          const maxRent = filters.maxRent * 10000
+          params.append('maxRent', maxRent.toString())
+        }
+      }
+      
+      if (filters.parking !== null) {
+        params.append('parking', filters.parking.toString())
+      }
+      
+      // 방 개수 필터 (기본값이 아닐 때만 전송)
+      if (filters.minRooms !== FILTER_RANGES.rooms.min) {
+        params.append('minRooms', filters.minRooms.toString())
+      }
+      
+      if (filters.maxRooms !== FILTER_RANGES.rooms.max) {
+        params.append('maxRooms', filters.maxRooms.toString())
+      }
+      
+      // 면적 필터 (기본값이 아닐 때만 전송)
+      if (filters.minArea !== FILTER_RANGES.area.min) {
+        params.append('minArea', filters.minArea.toString())
+      }
+      
+      if (filters.maxArea !== FILTER_RANGES.area.max) {
+        params.append('maxArea', filters.maxArea.toString())
+      }
+      
+      const url = `http://localhost:8080/api/listings${params.toString() ? '?' + params.toString() : ''}`
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        throw new Error('매물 목록을 불러오는데 실패했습니다.')
+      }
+      const data = await response.json()
+      setProperties(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.')
+      console.error('매물 목록 로딩 오류:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleFilterChange = (key: keyof FilterState, value: any) => {
+    setFilters(prev => ({ ...prev, [key]: value }))
+  }
+
+  const resetFilters = () => {
+    setFilters({
+      priceType: 'all',
+      minDeposit: FILTER_RANGES.deposit.min,
+      maxDeposit: FILTER_RANGES.deposit.max,
+      minRent: FILTER_RANGES.rent.min,
+      maxRent: FILTER_RANGES.rent.max,
+      leaseType: null,
+      parking: null,
+      minRooms: FILTER_RANGES.rooms.min,
+      maxRooms: FILTER_RANGES.rooms.max,
+      minArea: FILTER_RANGES.area.min,
+      maxArea: FILTER_RANGES.area.max,
+    })
+  }
+
+  const formatPrice = (listing: Listing) => {
+    if (listing.leaseType === '전세') {
+      return `전세 ${(listing.priceDeposit / 10000).toFixed(0)}만원`
+    } else {
+      const deposit = (listing.priceDeposit / 10000).toFixed(0)
+      const rent = listing.priceRent ? `${listing.priceRent}만원` : ''
+      return `월세 ${rent} / 보증금 ${deposit}만원`
+    }
+  }
+
+  const formatArea = (areaM2: number) => {
+    return `${areaM2.toFixed(0)}m²`
+  }
+
 
   const badgeColors = {
     green: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -16,255 +184,349 @@ export default function PropertyListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Top Header Bar */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-8">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                매물 찾기
-              </h1>
-              <div className="hidden md:flex items-center space-x-1 text-sm text-slate-600">
-                <Home className="w-4 h-4" />
-                <span>총 <strong className="text-slate-900 font-semibold">8개</strong>의 매물</span>
-              </div>
+    <div className="flex space-x-6">
+      {/* Filter Panel */}
+      <div className="w-64 bg-white border border-gray-200 rounded-lg p-4 h-fit">
+        <h2 className="text-lg font-bold text-gray-900 mb-4">필터</h2>
+        
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">임대 유형</label>
+          <div className="flex space-x-4 mb-2">
+            <label className="flex items-center">
+              <input 
+                type="radio" 
+                name="leaseType" 
+                value="all"
+                checked={filters.leaseType === null || filters.leaseType === 'all'}
+                onChange={(e) => handleFilterChange('leaseType', e.target.value === 'all' ? null : e.target.value)}
+                className="mr-2" 
+              />
+              <span className="text-sm">전체</span>
+            </label>
+            <label className="flex items-center">
+              <input 
+                type="radio" 
+                name="leaseType" 
+                value="전세"
+                checked={filters.leaseType === '전세'}
+                onChange={(e) => handleFilterChange('leaseType', e.target.value)}
+                className="mr-2" 
+              />
+              <span className="text-sm">전세</span>
+            </label>
+            <label className="flex items-center">
+              <input 
+                type="radio" 
+                name="leaseType" 
+                value="월세"
+                checked={filters.leaseType === '월세'}
+                onChange={(e) => handleFilterChange('leaseType', e.target.value)}
+                className="mr-2" 
+              />
+              <span className="text-sm">월세</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            보증금 (만원)
+          </label>
+          <div className="mb-2 text-xs text-gray-600 text-center">
+            {filters.minDeposit.toLocaleString()}만원 ~ {filters.maxDeposit.toLocaleString()}만원
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">최소</label>
+              <input 
+                type="range" 
+                min={FILTER_RANGES.deposit.min}
+                max={FILTER_RANGES.deposit.max}
+                step={100}
+                value={filters.minDeposit}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value)
+                  if (value <= filters.maxDeposit) {
+                    handleFilterChange('minDeposit', value)
+                  }
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+              />
             </div>
-            <div className="flex items-center space-x-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="지역, 역 검색..." 
-                  className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
-                />
-              </div>
-              <button className="md:hidden p-2 hover:bg-slate-100 rounded-lg">
-                <SlidersHorizontal className="w-5 h-5 text-slate-700" />
-              </button>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">최대</label>
+              <input 
+                type="range" 
+                min={FILTER_RANGES.deposit.min}
+                max={FILTER_RANGES.deposit.max}
+                step={100}
+                value={filters.maxDeposit}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value)
+                  if (value >= filters.minDeposit) {
+                    handleFilterChange('maxDeposit', value)
+                  }
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+              />
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex gap-6">
-          {/* Enhanced Filter Panel */}
-          <div className="hidden md:block w-80 flex-shrink-0">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 sticky top-24">
-              <div className="p-6 border-b border-slate-100">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <SlidersHorizontal className="w-5 h-5 text-blue-600" />
-                    필터
-                  </h2>
-                  <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                    초기화
-                  </button>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">원하는 조건을 선택하세요</p>
+        {filters.leaseType === '월세' && (
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              월세 금액 (만원)
+            </label>
+            <div className="mb-2 text-xs text-gray-600 text-center">
+              {filters.minRent.toLocaleString()}만원 ~ {filters.maxRent.toLocaleString()}만원
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">최소</label>
+                <input 
+                  type="range" 
+                  min={FILTER_RANGES.rent.min}
+                  max={FILTER_RANGES.rent.max}
+                  step={10}
+                  value={filters.minRent}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value)
+                    if (value <= filters.maxRent) {
+                      handleFilterChange('minRent', value)
+                    }
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                />
               </div>
-              
-              <div className="p-6 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto">
-                {/* Price Filter */}
-                <div className="space-y-3">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <DollarSign className="w-4 h-4 text-slate-600" />
-                    가격 범위
-                  </label>
-                  <div className="flex gap-3 p-3 bg-slate-50 rounded-xl">
-                    <label className="flex items-center flex-1 cursor-pointer">
-                      <input type="radio" name="price" defaultChecked className="mr-2 accent-blue-600" />
-                      <span className="text-sm font-medium text-slate-700">전세가</span>
-                    </label>
-                    <label className="flex items-center flex-1 cursor-pointer">
-                      <input type="radio" name="price" className="mr-2 accent-blue-600" />
-                      <span className="text-sm font-medium text-slate-700">월세가</span>
-                    </label>
-                  </div>
-                  <div className="space-y-3 pt-2">
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="500000" 
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600" 
-                    />
-                    <div className="flex gap-2">
-                      <input 
-                        type="number" 
-                        placeholder="최소" 
-                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-                      />
-                      <span className="flex items-center text-slate-400">~</span>
-                      <input 
-                        type="number" 
-                        placeholder="최대" 
-                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Property Type Filter */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <button className="w-full flex items-center justify-between text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors">
-                    <span className="flex items-center gap-2">
-                      <Home className="w-4 h-4" />
-                      매물 유형
-                    </span>
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    {['원룸', '아파트', '오피스텔', '빌라', '다세대'].map((type) => (
-                      <label key={type} className="flex items-center p-2.5 bg-slate-50 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors group">
-                        <input type="checkbox" className="mr-2 accent-blue-600" />
-                        <span className="text-sm text-slate-700 group-hover:text-blue-700 font-medium">{type}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Contract Period Filter */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <button className="w-full flex items-center justify-between text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors">
-                    <span className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      계약 기간
-                    </span>
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Safety Options Filter */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <button className="w-full flex items-center justify-between text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors">
-                    <span className="flex items-center gap-2">
-                      <Shield className="w-4 h-4" />
-                      여성 안심 옵션
-                    </span>
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Pet-Friendly Filter */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <button className="w-full flex items-center justify-between text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors">
-                    <span className="flex items-center gap-2">
-                      <Heart className="w-4 h-4" />
-                      반려동물 허용
-                    </span>
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-slate-100">
-                <button className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md">
-                  검색하기
-                </button>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">최대</label>
+                <input 
+                  type="range" 
+                  min={FILTER_RANGES.rent.min}
+                  max={FILTER_RANGES.rent.max}
+                  step={10}
+                  value={filters.maxRent}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value)
+                    if (value >= filters.minRent) {
+                      handleFilterChange('maxRent', value)
+                    }
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                />
               </div>
             </div>
           </div>
+        )}
 
-          {/* Property Grid */}
-          <div className="flex-1">
-            {/* Sort Bar */}
-            <div className="flex items-center justify-between mb-6 bg-white rounded-xl p-4 shadow-sm border border-slate-200">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-600">정렬</span>
-                <select className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer">
-                  <option>추천순</option>
-                  <option>최신순</option>
-                  <option>가격 낮은순</option>
-                  <option>가격 높은순</option>
-                </select>
-              </div>
-              <div className="hidden md:flex items-center gap-2">
-                <button className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
-                  <div className="grid grid-cols-3 gap-0.5">
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></div>
-                  </div>
-                </button>
-                <button className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
-                  <div className="space-y-1">
-                    <div className="w-5 h-0.5 bg-slate-400 rounded"></div>
-                    <div className="w-5 h-0.5 bg-slate-400 rounded"></div>
-                    <div className="w-5 h-0.5 bg-slate-400 rounded"></div>
-                  </div>
-                </button>
-              </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            방 개수
+          </label>
+          <div className="mb-2 text-xs text-gray-600 text-center">
+            {filters.minRooms}개 ~ {filters.maxRooms}개
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">최소</label>
+              <input 
+                type="range" 
+                min={FILTER_RANGES.rooms.min}
+                max={FILTER_RANGES.rooms.max}
+                step={1}
+                value={filters.minRooms}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value)
+                  if (value <= filters.maxRooms) {
+                    handleFilterChange('minRooms', value)
+                  }
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+              />
             </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">최대</label>
+              <input 
+                type="range" 
+                min={FILTER_RANGES.rooms.min}
+                max={FILTER_RANGES.rooms.max}
+                step={1}
+                value={filters.maxRooms}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value)
+                  if (value >= filters.minRooms) {
+                    handleFilterChange('maxRooms', value)
+                  }
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+              />
+            </div>
+          </div>
+        </div>
 
-            {/* Property Cards */}
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {properties.map((property) => (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            면적 (m²)
+          </label>
+          <div className="mb-2 text-xs text-gray-600 text-center">
+            {filters.minArea.toFixed(0)}m² ~ {filters.maxArea.toFixed(0)}m²
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">최소</label>
+              <input 
+                type="range" 
+                min={FILTER_RANGES.area.min}
+                max={FILTER_RANGES.area.max}
+                step={5}
+                value={filters.minArea}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value)
+                  if (value <= filters.maxArea) {
+                    handleFilterChange('minArea', value)
+                  }
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">최대</label>
+              <input 
+                type="range" 
+                min={FILTER_RANGES.area.min}
+                max={FILTER_RANGES.area.max}
+                step={5}
+                value={filters.maxArea}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value)
+                  if (value >= filters.minArea) {
+                    handleFilterChange('maxArea', value)
+                  }
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">주차</label>
+          <div className="space-y-2">
+            <label className="flex items-center">
+              <input 
+                type="radio" 
+                name="parking" 
+                checked={filters.parking === null}
+                onChange={() => handleFilterChange('parking', null)}
+                className="mr-2" 
+              />
+              <span className="text-sm text-gray-600">전체</span>
+            </label>
+            <label className="flex items-center">
+              <input 
+                type="radio" 
+                name="parking" 
+                checked={filters.parking === true}
+                onChange={() => handleFilterChange('parking', true)}
+                className="mr-2" 
+              />
+              <span className="text-sm text-gray-600">주차 가능</span>
+            </label>
+            <label className="flex items-center">
+              <input 
+                type="radio" 
+                name="parking" 
+                checked={filters.parking === false}
+                onChange={() => handleFilterChange('parking', false)}
+                className="mr-2" 
+              />
+              <span className="text-sm text-gray-600">주차 불가</span>
+            </label>
+          </div>
+        </div>
+
+        <button 
+          onClick={resetFilters}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+        >
+          필터 초기화
+        </button>
+      </div>
+
+      {/* Property List */}
+      <div className="flex-1">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-gray-900">매물 리스트</h1>
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-gray-600">총 {properties.length}개의 매물</span>
+            <select className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
+              <option>정렬</option>
+            </select>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="text-center py-12">
+            <p className="text-gray-600">매물 목록을 불러오는 중...</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="text-center py-12">
+            <p className="text-red-600">{error}</p>
+            <button
+              onClick={fetchProperties}
+              className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            >
+              다시 시도
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <div className="grid md:grid-cols-3 gap-6">
+            {properties.length === 0 ? (
+              <div className="col-span-3 text-center py-12">
+                <p className="text-gray-600">등록된 매물이 없습니다.</p>
+              </div>
+            ) : (
+              properties.map((property) => (
                 <Link
-                  key={property.id}
-                  to={`/properties/${property.id}`}
-                  className="group bg-white rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-blue-300"
+                  key={property.listingId}
+                  to={`/properties/${property.listingId}`}
+                  className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
                 >
-                  {/* Image Container */}
-                  <div className="relative h-52 bg-gradient-to-br from-slate-200 to-slate-300 overflow-hidden">
-                    <div className="absolute inset-0 bg-slate-200 group-hover:scale-105 transition-transform duration-300"></div>
-                    <button className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full hover:bg-white transition-colors z-10">
-                      <Heart className="w-4 h-4 text-slate-600 hover:text-red-500 transition-colors" />
-                    </button>
-                    <div className="absolute top-3 left-3 z-10">
-                      <span className={`px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm ${badgeColors[property.badge.color as keyof typeof badgeColors]}`}>
-                        {property.badge.text}
+                  <div className="h-48 bg-gray-200"></div>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${badgeColors.green}`}>
+                        {property.leaseType}
                       </span>
                     </div>
-                  </div>
-
-                  
-                  
-                  {/* Content */}
-                  <div className="p-5 space-y-3">
-                    <div>
-                      <div className="font-bold text-xl text-slate-900 mb-1 group-hover:text-blue-600 transition-colors">
-                        {property.price}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <span className="font-medium">{property.type}</span>
-                        <span className="text-slate-300">|</span>
-                        <span>{property.size}</span>
-                      </div>
+                    <div className="font-bold text-lg mb-1">{formatPrice(property)}</div>
+                    <div className="text-sm text-gray-600 mb-2">{formatArea(property.areaM2)}</div>
+                    <div className="text-sm text-gray-600 mb-2">◎ {property.address}</div>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {property.rooms && (
+                        <span className="text-xs text-gray-600">{property.rooms}룸</span>
+                      )}
+                      {property.parking && (
+                        <span className="text-xs text-gray-600">주차 가능</span>
+                      )}
+                      {property.floor && property.floorBuilding && (
+                        <span className="text-xs text-gray-600">{property.floor}/{property.floorBuilding}층</span>
+                      )}
                     </div>
-                    
-                    <div className="flex items-start gap-1.5 text-sm text-slate-600">
-                      <MapPin className="w-4 h-4 mt-0.5 text-slate-400 flex-shrink-0" />
-                      <span>{property.location}</span>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-1.5 pt-2">
-                      {property.features.map((feature, idx) => (
-                        <span key={idx} className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium">
-                          {feature}
-                        </span>
-                      ))}
-                    </div>
-
-                    <button className="w-full mt-4 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all text-sm shadow-sm group-hover:shadow-md">
+                    <button className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium">
                       상세보기
                     </button>
                   </div>
                 </Link>
-              ))}
-            </div>
-
-            {/* Load More Button */}
-            <div className="mt-8 text-center">
-              <button className="px-8 py-3 border-2 border-slate-200 text-slate-700 rounded-xl font-semibold hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                더 보기
-              </button>
-            </div>
+              ))
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
