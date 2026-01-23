@@ -1,7 +1,67 @@
 import { Link } from 'react-router-dom'
 import { Building2, DollarSign, Home, Calendar, FileCheck, Search, AlertTriangle, CheckCircle, Bell } from 'lucide-react'
+import { useState, useEffect } from 'react'
+
+interface RecentViewedProperty {
+  listingId: number
+  viewedAt: string
+  data: {
+    listingId: number
+    title: string
+    address: string
+    priceDeposit: number
+    leaseType: string
+    priceRent: number | null
+    areaM2: number
+    floor: number | null
+    floorBuilding: number | null
+    rooms: number | null
+    parking: boolean
+  }
+}
 
 export default function HomePage() {
+  const [recentViews, setRecentViews] = useState<RecentViewedProperty[]>([])
+
+  useEffect(() => {
+    loadRecentViews()
+  }, [])
+
+  const loadRecentViews = () => {
+    try {
+      const stored = localStorage.getItem('recentViewedProperties')
+      if (stored) {
+        const views = JSON.parse(stored)
+        setRecentViews(views)
+      }
+    } catch (error) {
+      console.error('최근 본 매물 불러오기 실패:', error)
+    }
+  }
+
+  const formatPrice = (property: RecentViewedProperty['data']) => {
+    if (property.leaseType === '전세') {
+      return `전세 ${(property.priceDeposit / 10000).toFixed(0)}만원`
+    } else {
+      const deposit = (property.priceDeposit / 10000).toFixed(0)
+      const rent = property.priceRent ? `${property.priceRent}만원` : ''
+      return `월세 ${rent} / 보증금 ${deposit}만원`
+    }
+  }
+
+  const formatArea = (areaM2: number) => {
+    return `${areaM2.toFixed(0)}m²`
+  }
+
+  const getAddressParts = (address: string) => {
+    // 주소에서 구/동 추출 (예: "서울시 강남구 역삼동" -> "강남구 역삼동")
+    const parts = address.split(' ')
+    if (parts.length >= 2) {
+      return parts.slice(1).join(' ')
+    }
+    return address
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -122,20 +182,62 @@ export default function HomePage() {
       </div>
 
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">최근 본 매물</h2>
-        <div className="grid md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Link key={i} to={`/properties/${i}`} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="h-48 bg-gray-200"></div>
-              <div className="p-4">
-                <div className="text-sm text-gray-600 mb-1">아파트 | 강남구 역삼동</div>
-                <div className="font-bold text-lg mb-2">전세 5억 5천</div>
-                <div className="text-sm text-gray-600">서울 강남구 테헤란로 123</div>
-                <div className="text-sm text-primary-600 mt-2">역세권 신축</div>
-              </div>
-            </Link>
-          ))}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-gray-900">최근 본 매물</h2>
+          {recentViews.length > 0 && (
+            <button
+              onClick={() => {
+                localStorage.removeItem('recentViewedProperties')
+                setRecentViews([])
+              }}
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              전체 삭제
+            </button>
+          )}
         </div>
+        {recentViews.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+            <p className="text-gray-600">최근 본 매물이 없습니다.</p>
+            <Link
+              to="/properties"
+              className="mt-4 inline-block text-primary-600 hover:text-primary-700 font-medium"
+            >
+              매물 찾기 →
+            </Link>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-4 gap-4">
+            {recentViews.map((view) => (
+              <Link
+                key={view.listingId}
+                to={`/properties/${view.listingId}`}
+                className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
+              >
+                <div className="h-48 bg-gray-200"></div>
+                <div className="p-4">
+                  <div className="text-sm text-gray-600 mb-1">
+                    {view.data.rooms ? `${view.data.rooms}룸` : ''} | {getAddressParts(view.data.address)}
+                  </div>
+                  <div className="font-bold text-lg mb-2">{formatPrice(view.data)}</div>
+                  <div className="text-sm text-gray-600 mb-2">{view.data.title}</div>
+                  <div className="text-sm text-gray-600">{formatArea(view.data.areaM2)}</div>
+                  <div className="flex items-center gap-2 mt-2">
+                    {view.data.parking && (
+                      <span className="text-xs text-primary-600">주차</span>
+                    )}
+                    {view.data.floor && view.data.floorBuilding && (
+                      <span className="text-xs text-gray-500">{view.data.floor}/{view.data.floorBuilding}층</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-2">
+                    {new Date(view.viewedAt).toLocaleDateString('ko-KR')}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <div>

@@ -26,13 +26,15 @@ public class AuthController {
         // 1. 토큰 생성
         String token = loginService.login(request);
         
-        // 2. 닉네임 가져오기 (추가된 부분)
+        // 2. 닉네임과 role 가져오기
         String nickname = userService.getNicknameByEmail(request.getEmail());
+        String role = userService.getRoleByEmail(request.getEmail());
 
-        // 3. 응답 데이터 구성 (nickname 추가)
+        // 3. 응답 데이터 구성 (nickname, role 추가)
         return ResponseEntity.ok(Map.of(
             "accessToken", token,
-            "nickname", nickname
+            "nickname", nickname,
+            "role", role
         ));
     }
 

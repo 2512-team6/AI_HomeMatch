@@ -37,6 +37,13 @@ export default function PropertyDetailPage() {
     }
   }, [id])
 
+  // 매물 조회 시 최근 본 매물에 추가
+  useEffect(() => {
+    if (listing) {
+      addToRecentViewHistory(listing)
+    }
+  }, [listing])
+
   const fetchListingDetail = async (listingId: number) => {
     try {
       setLoading(true)
@@ -68,6 +75,42 @@ export default function PropertyDetailPage() {
   const formatArea = () => {
     if (!listing) return ''
     return `${listing.areaM2.toFixed(0)}m² (${(listing.areaM2 / 3.3).toFixed(1)}평)`
+  }
+
+  // 최근 본 매물에 추가하는 함수
+  const addToRecentViewHistory = (listingData: ListingDetail) => {
+    try {
+      const MAX_RECENT_VIEWS = 10
+      const storageKey = 'recentViewedProperties'
+      
+      // 기존 최근 본 매물 목록 가져오기
+      const existing = localStorage.getItem(storageKey)
+      let recentViews: Array<{ listingId: number; viewedAt: string; data: ListingDetail }> = []
+      
+      if (existing) {
+        recentViews = JSON.parse(existing)
+      }
+      
+      // 이미 같은 매물이 있으면 제거 (중복 방지)
+      recentViews = recentViews.filter(item => item.listingId !== listingData.listingId)
+      
+      // 새로운 매물을 맨 앞에 추가
+      recentViews.unshift({
+        listingId: listingData.listingId,
+        viewedAt: new Date().toISOString(),
+        data: listingData
+      })
+      
+      // 최대 개수 제한
+      if (recentViews.length > MAX_RECENT_VIEWS) {
+        recentViews = recentViews.slice(0, MAX_RECENT_VIEWS)
+      }
+      
+      // localStorage에 저장
+      localStorage.setItem(storageKey, JSON.stringify(recentViews))
+    } catch (error) {
+      console.error('최근 본 매물 저장 실패:', error)
+    }
   }
 
   const tabs = [

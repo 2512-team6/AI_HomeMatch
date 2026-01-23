@@ -28,6 +28,7 @@ export default function LoginPage() {
       const data = await res.json();
       localStorage.setItem('accessToken', data.accessToken);
       localStorage.setItem('nickname', data.nickname); // 닉네임 추가 저장
+      localStorage.setItem('role', data.role || 'USER'); // role 저장
       navigate('/');
     } catch (err) {
       console.error("로그인 에러:", err);

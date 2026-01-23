@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Search, Bell, User, LogOut, Menu } from 'lucide-react'
+import { Search, Bell, User, LogOut, Menu, Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSidebar } from '../contexts/SidebarContext'
 
@@ -8,26 +8,32 @@ export default function Header() {
   const navigate = useNavigate()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [nickname, setNickname] = useState('')
+  const [role, setRole] = useState<string>('')
   const { toggleSidebar } = useSidebar()
 
   useEffect(() => {
     // 1. 토큰 존재 여부 확인
     const token = localStorage.getItem('accessToken')
     const savedNickname = localStorage.getItem('nickname') // 로그인 시 닉네임도 저장했다고 가정
+    const savedRole = localStorage.getItem('role') || 'USER'
     
     if (token && savedNickname) {
       setIsLoggedIn(true);
       setNickname(savedNickname);
+      setRole(savedRole);
     } else {
       setIsLoggedIn(false);
       setNickname('');
+      setRole('');
     }
   }, [location]) // 페이지 이동 때마다 체크
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken')
     localStorage.removeItem('nickname')
+    localStorage.removeItem('role')
     setIsLoggedIn(false)
+    setRole('')
     navigate('/login')
   }
 
@@ -77,6 +83,18 @@ export default function Header() {
                   <button className="relative p-2 text-gray-600 hover:text-gray-900">
                     <Bell className="w-6 h-6" />
                   </button>
+                  
+                  {/* 관리자 페이지 링크 (admin role일 때만 표시) */}
+                  {role === 'ADMIN' && (
+                    <Link
+                      to="/admin"
+                      className="flex items-center space-x-1 px-3 py-2 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg font-medium transition-colors"
+                      title="관리자 페이지"
+                    >
+                      <Shield className="w-4 h-4" />
+                      <span className="text-sm">관리자</span>
+                    </Link>
+                  )}
                   
                   <div className="flex items-center space-x-2 border-l pl-4 ml-2">
                     <div className="w-8 h-8 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center font-bold">
