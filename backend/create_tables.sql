@@ -1,5 +1,23 @@
--- listings 테이블 생성(매물 찾기)
--- 매물 탐색 및 상세 정보를 통합한 매물 테이블
+--------------- 사용자 테이블 생성 --------------------
+/* =========================================================
+ * 1. 사용자 정보 테이블
+ * ========================================================= */
+create table users (
+    user_no int auto_increment primary key,
+    email varchar(255) unique not null,
+    password varchar(255) not null,
+    name varchar(255) NOT NULL,
+    role varchar(30) not NULL,
+    phone varchar(30),
+    nickname varchar(30) NOT NULL,
+    updated_at datetime NOT NULL
+);
+
+
+--------------- 매물 테이블 생성 --------------------
+/* =========================================================
+ * 2. 매물 정보 테이블
+ * ========================================================= */
 CREATE TABLE IF NOT EXISTS listings (
     listing_id INT PRIMARY KEY AUTO_INCREMENT COMMENT '매물 ID',
     owner VARCHAR(100) NOT NULL COMMENT '임대인',
@@ -30,29 +48,26 @@ CREATE TABLE IF NOT EXISTS listings (
 
 --------------- 퇴실관리 테이블 생성 --------------------
 /* =========================================================
- * 1. 입주 상태 기록 테이블
- * - 입주 시 촬영한 사진과 공간별 상태를 저장
+ * 3. 입주 상태 사진 기록 테이블
  * ========================================================= */
-CREATE TABLE entry_status_records (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 입주 기록 고유 ID
-    user_id INT NOT NULL,                           -- 사용자 ID (users.user_no 참조)
-    image_url VARCHAR(500) NOT NULL,                -- 입주 당시 촬영 이미지 URL
-    record_type VARCHAR(50) NOT NULL,               -- 공간 유형 (현관, 거실, 주방 등)
-    record_date DATE NOT NULL,                      -- 기록 날짜
-    description TEXT,                               -- 상태 설명 메모
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- 생성 시각
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
-        ON UPDATE CURRENT_TIMESTAMP,                -- 수정 시각
-    INDEX idx_user_id (user_id),                    -- 사용자 기준 조회 인덱스
-    INDEX idx_record_date (record_date),            -- 날짜 기준 조회 인덱스
-    FOREIGN KEY (user_id) 
-        REFERENCES users(user_no) ON DELETE CASCADE -- 사용자 삭제 시 같이 삭제
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS entry_status_records (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    record_type VARCHAR(50) NOT NULL,
+    record_date DATE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
+    INDEX idx_entry_status_user (user_id),
+    INDEX idx_entry_status_user_type (user_id, record_type),
+    INDEX idx_entry_status_date (record_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
 /* =========================================================
- * 2. 퇴실 / 원상복구 체크리스트
- * - 퇴실 전 해야 할 필수 항목 관리
+ * 4. 퇴실 전 해야 할 필수 항목 관리 테이블
  * ========================================================= */
 CREATE TABLE moveout_checklists (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 체크리스트 항목 ID
@@ -72,9 +87,9 @@ CREATE TABLE moveout_checklists (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
+
 /* =========================================================
- * 3. 보증금 관리 테이블
- * - 보증금 정산 / 반환 상태 관리
+ * 5. 보증금 정산 / 반환 상태 관리 테이블
  * ========================================================= */
 CREATE TABLE deposit_managements (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 보증금 관리 ID
@@ -100,27 +115,24 @@ CREATE TABLE deposit_managements (
 
 
 /* =========================================================
- * 4. 퇴실 전 사진 기록
- * - 퇴실 직전 집 상태 증빙용 사진
+ * 6. 퇴실 직전 집 상태 증빙용 사진 테이블
  * ========================================================= */
 CREATE TABLE moveout_photos (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 사진 ID
-    user_id INT NOT NULL,                           -- 사용자 ID
-    photo_url VARCHAR(500) NOT NULL,                -- 사진 URL
-    photo_type VARCHAR(50),                         -- 사진 유형 (전체, 벽, 바닥 등)
-    taken_date DATE NOT NULL,                       -- 촬영 날짜
-    description TEXT,                               -- 설명
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- 생성 시각
-    INDEX idx_user_id (user_id),                    -- 사용자 기준 조회
-    INDEX idx_taken_date (taken_date),              -- 촬영일 기준 조회
-    FOREIGN KEY (user_id) 
-        REFERENCES users(user_no) ON DELETE CASCADE
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    photo_url VARCHAR(500) NOT NULL,
+    photo_type VARCHAR(50),
+    taken_date DATE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_taken_date (taken_date),
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
 /* =========================================================
- * 5. 분쟁 기록 테이블
- * - 보증금, 시설 훼손 등 분쟁 발생 시 기록
+ * 7. 보증금, 시설 훼손 등 분쟁 발생 시 기록
  * ========================================================= */
 CREATE TABLE dispute_records (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 분쟁 기록 ID
@@ -143,8 +155,7 @@ CREATE TABLE dispute_records (
 
 
 /* =========================================================
- * 6. 보증금 반환 이력 테이블
- * - 내용증명, 지급명령 등 보증금 관련 이벤트 로그
+ * 8. 내용증명, 지급명령 등 보증금 관련 이벤트 로그
  * ========================================================= */
 CREATE TABLE deposit_return_history (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 이력 ID
@@ -159,4 +170,86 @@ CREATE TABLE deposit_return_history (
     FOREIGN KEY (deposit_management_id)
         REFERENCES deposit_managements(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+--------------- 입주관리 테이블 생성 --------------------
+/* =========================================================
+ * 9. 거주계약기간 설정 저장 테이블
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS housing_contracts (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL UNIQUE COMMENT '사용자 ID (users.user_no 참조, 1인당 1개만 존재)',
+    contract_start_date DATE NOT NULL COMMENT '계약 시작일 (입주일)',
+    contract_end_date DATE NOT NULL COMMENT '계약 종료일 (거주 마감일)',
+    contract_duration_months INT COMMENT '계약 기간 (월 단위, 예: 12개월, 6개월)',
+    notes TEXT COMMENT '계약 관련 메모',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_contract_start_date (contract_start_date),
+    INDEX idx_contract_end_date (contract_end_date),
+    CONSTRAINT chk_contract_dates CHECK (contract_end_date > contract_start_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/* =========================================================
+ * 10. 주거비 기본 설정 (1인 1개)
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS housing_cost_settings (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL UNIQUE,
+    rent DECIMAL(15,2) NOT NULL DEFAULT 0,
+    maintenance DECIMAL(15,2) NOT NULL DEFAULT 0,
+    utilities DECIMAL(15,2) NOT NULL DEFAULT 0,
+    payment_date TINYINT NOT NULL,
+    auto_register BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
+    CHECK (payment_date BETWEEN 1 AND 31)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/* =========================================================
+ * 11. 주거비 기본 설정 (1인 1개)
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS monthly_housing_records (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    year INT NOT NULL,
+    month TINYINT NOT NULL,
+    rent DECIMAL(15,2) NOT NULL DEFAULT 0,
+    maintenance DECIMAL(15,2) NOT NULL DEFAULT 0,
+    utilities DECIMAL(15,2) NOT NULL DEFAULT 0,
+    payment_date TINYINT NOT NULL,
+    paid BOOLEAN NOT NULL DEFAULT FALSE,
+    paid_at TIMESTAMP NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
+    UNIQUE KEY uk_user_year_month (user_id, year, month),
+    INDEX idx_user_year_month (user_id, year, month),
+    CHECK (month BETWEEN 1 AND 12),
+    CHECK (payment_date BETWEEN 1 AND 31)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/* =========================================================
+ * 12. 입주 상태 사진 기록 테이블
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS residency_defect_issues (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    image_url MEDIUMTEXT NOT NULL,
+    issue_date DATE NOT NULL,
+    status ENUM ('RECEIVED','IN_PROGRESS','COMPLETED','REJECTED')
+        NOT NULL DEFAULT 'RECEIVED',
+    memo TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
+    INDEX idx_defect_issue_user_status (user_id, status),
+    INDEX idx_defect_issue_date (issue_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
