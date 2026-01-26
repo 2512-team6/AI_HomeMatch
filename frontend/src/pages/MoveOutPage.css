@@ -1,0 +1,95 @@
+/* =========================
+   MoveOutPage – Enterprise UI (2025)
+   ========================= */
+
+/* Page */
+.moveout-page {
+  background: #f8fafc;
+}
+
+/* Title */
+.moveout-title {
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.moveout-sub {
+  font-size: 0.95rem;
+  color: #64748b;
+}
+
+/* Card */
+.moveout-card {
+  background: #ffffff;
+  border-radius: 1.25rem;
+  border: 1px solid #eef0f3;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.04);
+}
+
+/* Entry record */
+.entry-card {
+  border-radius: 1rem;
+  border: 1px solid #e5e7eb;
+  padding: 1rem;
+  transition: all .2s ease;
+}
+
+.entry-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.06);
+}
+
+.entry-image {
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+}
+
+/* Checklist */
+.check-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-radius: 1rem;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  transition: all .2s ease;
+}
+
+.check-item:hover {
+  background: #f5f3ff;
+  border-color: #c7bfff;
+}
+
+.check-item.done {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+}
+
+/* Dispute box */
+.dispute-box {
+  background: #ffffff;
+  border: 1px solid #f1f5f9;
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.dispute-box:hover {
+  border-color: #a78bfa;
+  box-shadow: 0 6px 20px rgba(124,92,255,0.15);
+}
+
+/* Timeline */
+.timeline-bar {
+  background: linear-gradient(to right, #c7bfff, #7c5cff);
+}
+
+/* Modal */
+.moveout-modal {
+  border-radius: 1.25rem;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.18);
+}
