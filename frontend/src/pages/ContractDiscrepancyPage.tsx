@@ -66,7 +66,7 @@ export default function ContractDiscrepancyPage() {
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-2">부동산 배지 검토</h3>
           <p className="text-sm text-gray-600 mb-4">
-            이 부동산의 신뢰도 및 안전성 관련 HomeMatch 배지를 상세하게 검토합니다.
+            이 부동산의 신뢰도 및 안전성 관련 Home'Scan 배지를 상세하게 검토합니다.
           </p>
           <button className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium">
             배지 검토하기
@@ -76,7 +76,7 @@ export default function ContractDiscrepancyPage() {
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-2">위험 점수 가이드</h3>
           <p className="text-sm text-gray-600 mb-4">
-            불일치가 HomeMatch 위험 신호 점수에 어떻게 반영되는지 이해합니다.
+            불일치가 Home'Scan 위험 신호 점수에 어떻게 반영되는지 이해합니다.
           </p>
           <button className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium">
             위험 점수 가이드 확인

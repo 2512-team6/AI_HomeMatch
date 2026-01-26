@@ -242,7 +242,7 @@ export default function MyPage() {
               <div>
                 <h3 className="font-bold mb-2">데이터 출처</h3>
                 <p className="text-sm">
-                  HomeMatch는 공개된 부동산 정보 및 등기부등본 데이터를 기반으로 정보를 제공합니다.
+                  Home'Scan는 공개된 부동산 정보 및 등기부등본 데이터를 기반으로 정보를 제공합니다.
                 </p>
               </div>
               <div>

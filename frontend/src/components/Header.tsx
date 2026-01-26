@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Search, Bell, User, LogOut, Menu, Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSidebar } from '../contexts/SidebarContext'
+import logoImage from '../assets/logo.png'
 
 export default function Header() {
   const location = useLocation()
@@ -56,10 +57,12 @@ export default function Header() {
                 <Menu className="w-6 h-6" />
               </button>
               <Link to="/home" className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-primary-600 rounded flex items-center justify-center">
-                  <span className="text-white font-bold">H</span>
-                </div>
-                <span className="text-xl font-bold text-gray-900">HomeMatch</span>
+                <img 
+                  src={logoImage} 
+                  alt="Home'Scan Logo" 
+                  className="h-7 w-auto object-contain"
+                />
+                {/* <span className="text-xl font-bold text-gray-900">Home'Scan</span> */}
               </Link>
             </div>
 

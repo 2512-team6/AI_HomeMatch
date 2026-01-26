@@ -1,6 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { FileText, Lightbulb, Users, CheckCircle, House, Shield, Gavel, LayoutDashboard, LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import logoImage from '../assets/logo.png'
+import logoHouseImage from '../assets/logo_house.png'
 
 export default function LandingPage() {
 
@@ -32,10 +34,12 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-primary-600 rounded flex items-center justify-center">
-                <span className="text-white font-bold">H</span>
-              </div>
-              <span className="text-xl font-bold text-gray-900">HomeMatch</span>
+              <img 
+                src={logoImage} 
+                alt="Home'Scan Logo" 
+                className="h-7 w-auto object-contain"
+              />
+              {/* <span className="text-xl font-bold text-gray-900">Home'Scan</span> */}
             </div>
 
             <div className="flex items-center space-x-4">
@@ -114,7 +118,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              계약부터 입주, 퇴실까지 HomeMatch가 모든 과정을 함께합니다
+              계약부터 입주, 퇴실까지 Home'Scan가 모든 과정을 함께합니다
             </p>
           </div>
 
@@ -209,14 +213,14 @@ export default function LandingPage() {
               <FileText className="w-12 h-12 text-primary-600 mb-4" />
               <h3 className="text-xl font-bold text-gray-900 mb-2">복잡한 계약</h3>
               <p className="text-gray-600">
-                어렵고 복잡한 법률 용어로 가득 찬 임대차 계약서, 이제 HomeMatch가 쉽게 풀어드립니다.
+                어렵고 복잡한 법률 용어로 가득 찬 임대차 계약서, 이제 Home'Scan가 쉽게 풀어드립니다.
               </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-6">
               <Lightbulb className="w-12 h-12 text-primary-600 mb-4" />
               <h3 className="text-xl font-bold text-gray-900 mb-2">정보 불균형</h3>
               <p className="text-gray-600">
-                중개사의 설명과 실제 계약 내용의 차이, HomeMatch가 명확하게 비교하고 검증합니다.
+                중개사의 설명과 실제 계약 내용의 차이, Home'Scan가 명확하게 비교하고 검증합니다.
               </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-6">
@@ -234,7 +238,7 @@ export default function LandingPage() {
       <section className="py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
-            HomeMatch는 이렇게 해결합니다
+            Home'Scan는 이렇게 해결합니다
           </h2>
           <div className="flex flex-col md:flex-row items-center justify-center space-y-8 md:space-y-0 md:space-x-8">
             <div className="text-center">
@@ -277,7 +281,7 @@ export default function LandingPage() {
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
-            HomeMatch의 핵심 기능
+            Home'Scan의 핵심 기능
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
             <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -332,13 +336,15 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-primary-600 rounded flex items-center justify-center">
-                  <span className="text-white font-bold">H</span>
-                </div>
-                <span className="text-xl font-bold">HomeMatch</span>
+                <img 
+                  src={logoHouseImage} 
+                  alt="Home'Scan Logo" 
+                  className="h-7 w-auto object-contain"
+                />
+                {/* <span className="text-xl font-bold">Home'Scan</span> */}
               </div>
               <p className="text-gray-400 text-sm">
-                HomeMatch simplifies your housing journey.
+                Home'Scan simplifies your housing journey.
               </p>
             </div>
             <div>
@@ -368,7 +374,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-8 pt-8 border-t border-gray-800 text-sm text-gray-400">
             <p>
-              면책 조항: HomeMatch에서 제공하는 정보는 일반적인 지침이며 법률 자문을 대체하지 않습니다.
+              면책 조항: Home'Scan에서 제공하는 정보는 일반적인 지침이며 법률 자문을 대체하지 않습니다.
             </p>
           </div>
         </div>

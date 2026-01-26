@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import logoHouseImage from '../assets/logo_house.png';
 
 export default function LoginPage() {
   // 1. 입력값 관리를 위한 상태(State) 선언
@@ -49,13 +50,15 @@ export default function LoginPage() {
       <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-2 mb-4">
-            <div className="w-12 h-12 bg-primary-600 rounded flex items-center justify-center">
-              <span className="text-white font-bold text-xl">H</span>
-            </div>
-            <span className="text-2xl font-bold text-gray-900">HomeMatch</span>
+            <img 
+              src={logoHouseImage} 
+              alt="Home'Scan Logo" 
+              className="h-12 w-auto object-contain"
+            />
+            {/* <span className="text-2xl font-bold text-gray-900">Home'Scan</span> */}
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">로그인</h1>
-          <p className="text-gray-600">HomeMatch에 오신 것을 환영합니다!</p>
+          <p className="text-gray-600">Home'Scan에 오신 것을 환영합니다!</p>
         </div>
 
         <div className="space-y-4">

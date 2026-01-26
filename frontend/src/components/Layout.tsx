@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import Header from './Header'
 import Sidebar from './Sidebar'
 import { SidebarProvider, useSidebar } from '../contexts/SidebarContext'
+import logoHouseImage from '../assets/logo_house.png'
 
 function LayoutContent({ children }: { children: ReactNode }) {
   const { isSidebarOpen } = useSidebar()
@@ -30,13 +31,15 @@ function LayoutContent({ children }: { children: ReactNode }) {
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-primary-600 rounded flex items-center justify-center">
-                  <span className="text-white font-bold">H</span>
-                </div>
-                <span className="text-xl font-bold">HomeMatch</span>
+                <img 
+                  src={logoHouseImage} 
+                  alt="Home'Scan Logo" 
+                  className="h-7 w-auto object-contain"
+                />
+                {/* <span className="text-xl font-bold">Home'Scan</span> */}
               </div>
               <p className="text-gray-400 text-sm">
-                HomeMatch simplifies your housing journey.
+                Home'Scan simplifies your housing journey.
               </p>
             </div>
             <div>
@@ -66,7 +69,7 @@ function LayoutContent({ children }: { children: ReactNode }) {
           </div>
           <div className="mt-8 pt-8 border-t border-gray-800 text-sm text-gray-400">
             <p>
-              면책 조항: HomeMatch에서 제공하는 정보는 일반적인 지침이며 법률 자문을 대체하지 않습니다.
+              면책 조항: Home'Scan에서 제공하는 정보는 일반적인 지침이며 법률 자문을 대체하지 않습니다.
             </p>
           </div>
         </div>
