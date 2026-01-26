@@ -6,6 +6,7 @@ import PropertyListPage from './pages/PropertyListPage'
 import PropertyDetailPage from './pages/PropertyDetailPage'
 import ContractReviewPage from './pages/ContractReviewPage'
 import ContractDiscrepancyPage from './pages/ContractDiscrepancyPage'
+import DeedAnalysisPage from './pages/DeedAnalysisPage'
 import ResidencyManagementPage from './pages/ResidencyManagementPage'
 import MoveOutPage from './pages/MoveOutPage'
 import ChatbotPage from './pages/ChatbotPage'
@@ -24,6 +25,7 @@ function App() {
       <Route path="/properties/:id" element={<Layout><PropertyDetailPage /></Layout>} />
       <Route path="/contract/review" element={<Layout><ContractReviewPage /></Layout>} />
       <Route path="/contract/discrepancy" element={<Layout><ContractDiscrepancyPage /></Layout>} />
+      <Route path="/contract/deed" element={<Layout><DeedAnalysisPage /></Layout>} />
       <Route path="/residency" element={<Layout><ResidencyManagementPage /></Layout>} />
       <Route path="/moveout" element={<Layout><MoveOutPage /></Layout>} />
       <Route path="/chatbot" element={<Layout><ChatbotPage /></Layout>} />

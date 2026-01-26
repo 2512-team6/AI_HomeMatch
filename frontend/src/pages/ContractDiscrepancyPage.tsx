@@ -1,4 +1,5 @@
-import { AlertTriangle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AlertTriangle, FileCheck, ChevronRight } from 'lucide-react'
 
 export default function ContractDiscrepancyPage() {
   return (
@@ -48,6 +49,30 @@ export default function ContractDiscrepancyPage() {
           <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700">
             본 계약 체결 전 확인된 등기부등본에 따르면, 해당 건물에는 선순위 전세권 설정(전세금 1억원)이 완료되어 있으며, 채무최고액 2억 5천만 원의 근저당권이 설정되어 있음을 확인한다. 임차인은 이 사실을 충분히 인지하고 본 계약에 동의한다.
           </div>
+        </div>
+      </div>
+
+      {/* 다음 단계: 등기부등본 분석 */}
+      <div className="bg-white border-2 border-primary-200 rounded-lg p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+              <FileCheck className="w-6 h-6 text-primary-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">다음: 등기부등본 분석</h3>
+              <p className="text-sm text-gray-600">
+                소유자 일치, 근저당·가압류, 공동소유 등 6가지만 확인하세요.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/contract/deed"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium"
+          >
+            등기부등본 분석하기
+            <ChevronRight className="w-4 h-4" />
+          </Link>
         </div>
       </div>
 

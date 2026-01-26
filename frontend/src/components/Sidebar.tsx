@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Building2, FileText, Building, Scale, MessageCircle, Settings } from 'lucide-react'
+import { Home, Building2, FileText, FileCheck, AlertTriangle, Building, Scale, MessageCircle, Settings } from 'lucide-react'
 import { useSidebar } from '../contexts/SidebarContext'
 
 export default function Sidebar() {
@@ -10,6 +10,8 @@ export default function Sidebar() {
     { path: '/home', label: 'Home', icon: Home },
     { path: '/properties', label: '집 찾기', icon: Building2 },
     { path: '/contract/review', label: '계약서 점검', icon: FileText },
+    { path: '/contract/discrepancy', label: '계약서 검증', icon: AlertTriangle },
+    { path: '/contract/deed', label: '등기부등본', icon: FileCheck },
     { path: '/residency', label: '거주 관리', icon: Building },
     { path: '/moveout', label: '퇴실 관리', icon: Scale },
   ]
