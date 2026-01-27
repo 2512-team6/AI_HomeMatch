@@ -24,16 +24,21 @@ class RAGConfig:
     mediation_collection_name: str = "mediation_cases"
 
     law_collection_name: str = "housing_lease_law"
-    chunk_size: int = 900
-    chunk_overlap: int = 150
+
+    precedent_collection_name: str = "precedent_cases"
+
+    chunk_size: int = 2000
+    chunk_overlap: int = 300
 
     top_k: int = 4
 
     embedding_model_name: str = (
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        # "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        "BAAI/bge-m3"
     )
 
 
+# 분쟁사례 필드값
 SECTION_FIELDS = [
     "facts",
     "issues",
