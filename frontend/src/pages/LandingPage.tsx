@@ -3,6 +3,7 @@ import { FileText, Lightbulb, Users, CheckCircle, House, Shield, Gavel, LayoutDa
 import { useEffect, useState } from 'react'
 import logoImage from '../assets/logo.png'
 import logoHouseImage from '../assets/logo_house.png'
+import FloatingChatbot from '../components/FloatingChatbot'
 
 export default function LandingPage() {
 
@@ -24,6 +25,7 @@ export default function LandingPage() {
     localStorage.removeItem('accessToken')
     localStorage.removeItem('nickname')
     setIsLoggedIn(false)
+    window.dispatchEvent(new CustomEvent('chat-reset'))
     navigate('/')
   }
 
@@ -410,6 +412,9 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* 플로팅 챗봇 - 랜딩 페이지 하단에도 표시 */}
+      <FloatingChatbot />
     </div>
   )
 }

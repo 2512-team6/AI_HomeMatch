@@ -355,6 +355,7 @@ export default function ResidencyManagementPage() {
             if (confirm('인증 토큰이 만료되었거나 유효하지 않습니다. 다시 로그인하시겠습니까?')) {
               localStorage.removeItem('accessToken')
               localStorage.removeItem('nickname')
+              window.dispatchEvent(new CustomEvent('chat-reset'))
               window.location.href = '/login'
               return
             }

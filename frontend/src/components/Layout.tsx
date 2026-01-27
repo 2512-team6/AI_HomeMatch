@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import Header from './Header'
 import Sidebar from './Sidebar'
+import FloatingChatbot from './FloatingChatbot'
 import { SidebarProvider, useSidebar } from '../contexts/SidebarContext'
 import logoHouseImage from '../assets/logo_house.png'
 
@@ -20,6 +21,9 @@ function LayoutContent({ children }: { children: ReactNode }) {
       >
         {children}
       </main>
+      
+      {/* 플로팅 챗봇 - 모든 페이지에서 표시 */}
+      <FloatingChatbot />
       
       {/* Footer */}
       <footer className={`bg-gray-900 text-white py-12 mt-4 transition-all duration-300 ease-in-out ${

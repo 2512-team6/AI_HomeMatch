@@ -35,6 +35,7 @@ export default function Header() {
     localStorage.removeItem('role')
     setIsLoggedIn(false)
     setRole('')
+    window.dispatchEvent(new CustomEvent('chat-reset'))
     navigate('/login')
   }
 

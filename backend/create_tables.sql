@@ -253,3 +253,36 @@ CREATE TABLE IF NOT EXISTS residency_defect_issues (
     INDEX idx_defect_issue_date (issue_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+--------------- 채팅 세션/메시지 테이블 생성 --------------------
+/* =========================================================
+ * 13. 채팅 세션 (사용자별 대화 세션)
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_no INT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_chat_sessions_user
+    FOREIGN KEY (user_no)
+        REFERENCES users(user_no)
+        ON DELETE CASCADE,
+    INDEX idx_user_no (user_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+/* =========================================================
+ * 14. 세션에 속한 메시지들
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS chat_messages (
+    message_id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_chat_messages_session
+    FOREIGN KEY (session_id)
+        REFERENCES chat_sessions(session_id)
+        ON DELETE CASCADE,
+    INDEX idx_session_id (session_id),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

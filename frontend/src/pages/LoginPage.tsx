@@ -37,9 +37,10 @@ export default function LoginPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("accessToken"); // 저장된 토큰 삭제
+    localStorage.removeItem("accessToken");
     alert("로그아웃 되었습니다.");
-    window.location.href = "/login"; // 로그인 페이지로 리다이렉트
+    window.dispatchEvent(new CustomEvent('chat-reset'));
+    window.location.href = "/login";
   };
 
   // JSX 예시
