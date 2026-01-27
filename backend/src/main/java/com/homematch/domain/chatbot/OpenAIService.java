@@ -19,11 +19,13 @@ public class OpenAIService {
 
     private final WebClient webClient;
     private final String apiKey;
+    private final String fineTunedModelId;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OpenAIService() {
         Dotenv dotenv = Dotenv.load();
         this.apiKey = dotenv.get("OPENAI_API_KEY", "");
+        this.fineTunedModelId = dotenv.get("OPENAI_FINETUNED_MODEL_ID", "");
         
         this.webClient = WebClient.builder()
                 .baseUrl("https://api.openai.com/v1")
@@ -74,7 +76,11 @@ public class OpenAIService {
 
             // API 요청 본문 구성
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", "gpt-4o-mini"); // 또는 "gpt-3.5-turbo"
+            // 파인튜닝 모델이 설정되어 있으면 우선 사용, 없으면 기본 모델 사용
+            String modelToUse = (fineTunedModelId != null && !fineTunedModelId.isEmpty())
+                    ? fineTunedModelId
+                    : "gpt-4o-mini";
+            requestBody.put("model", modelToUse);
             requestBody.put("messages", messages);
             requestBody.put("temperature", 0.3);
             requestBody.put("max_tokens", 1000);

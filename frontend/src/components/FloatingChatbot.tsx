@@ -41,6 +41,132 @@ export default function FloatingChatbot() {
   const [hasSentMessageInCurrentTopic, setHasSentMessageInCurrentTopic] = useState(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
 
+  // 봇 답변 가독성 향상을 위한 렌더링 헬퍼
+  const renderBotMessageText = (text: string) => {
+    // 줄 단위로 나눈 뒤, 번호/불릿/일반 문장을 구분해서 렌더링
+    const rawLines = text.split('\n')
+    const lines = rawLines.map((line) => line.trim()).filter((line) => line.length > 0)
+
+    const blocks: JSX.Element[] = []
+
+    let listBuffer: string[] = []
+
+    const flushList = () => {
+      if (!listBuffer.length) return
+      blocks.push(
+        <ul key={`list-${blocks.length}`} className="list-disc list-inside space-y-1 pl-1">
+          {listBuffer.map((item, i) => (
+            <li key={i} className="text-sm leading-relaxed">
+              {item}
+            </li>
+          ))}
+        </ul>
+      )
+      listBuffer = []
+    }
+
+    // 첫 줄은 제목/요약일 가능성이 높으니 따로 처리
+    lines.forEach((line, index) => {
+      const numbered = line.match(/^(\d+)[\.\)]\s*(.*)$/)
+      const bulleted = line.match(/^[-•]\s*(.*)$/)
+
+      if (numbered || bulleted) {
+        const content = numbered ? numbered[2] || numbered[0] : bulleted?.[1] || line
+        listBuffer.push(content)
+        return
+      }
+
+      // 리스트가 끝났으면 먼저 플러시
+      if (listBuffer.length) {
+        flushList()
+      }
+
+      const isNote =
+        /^[(（].*[)）]$/.test(line) ||
+        line.startsWith('※') ||
+        line.startsWith('참고') ||
+        line.includes('참고:')
+
+      // 특정 키워드 강조용 헬퍼
+      const highlightKeywords = (content: string) => {
+        const KEYWORDS = ['보증금', '대항력', '우선변제권']
+        const parts: JSX.Element[] = []
+
+        let remaining = content
+        let key = 0
+
+        while (remaining.length > 0) {
+          let earliestIndex = -1
+          let matched = ''
+
+          for (const kw of KEYWORDS) {
+            const idx = remaining.indexOf(kw)
+            if (idx !== -1 && (earliestIndex === -1 || idx < earliestIndex)) {
+              earliestIndex = idx
+              matched = kw
+            }
+          }
+
+          if (earliestIndex === -1) {
+            parts.push(
+              <span key={key++}>
+                {remaining}
+              </span>
+            )
+            break
+          }
+
+          if (earliestIndex > 0) {
+            parts.push(
+              <span key={key++}>
+                {remaining.slice(0, earliestIndex)}
+              </span>
+            )
+          }
+
+          parts.push(
+            <span key={key++} className="font-semibold text-primary-700">
+              {matched}
+            </span>
+          )
+
+          remaining = remaining.slice(earliestIndex + matched.length)
+        }
+
+        return parts
+      }
+
+      // 첫 번째 줄은 제목/요약 느낌으로 조금 더 강조
+      if (index === 0 && !numbered && !bulleted && !isNote) {
+        blocks.push(
+          <p
+            key={`p-${index}`}
+            className="text-sm font-semibold text-gray-900 whitespace-pre-wrap mb-1"
+          >
+            {highlightKeywords(line)}
+          </p>
+        )
+        return
+      }
+
+      blocks.push(
+        <p
+          key={`p-${index}`}
+          className={`text-sm leading-relaxed whitespace-pre-wrap ${
+            isNote ? 'text-gray-500 mt-1' : ''
+          }`}
+        >
+          {highlightKeywords(line)}
+        </p>
+      )
+    })
+
+    // 마지막에 남은 리스트 처리
+    flushList()
+
+    return <div className="space-y-1">{blocks}</div>
+  }
+
   // 주제 선택 시 해당 주제 추천 질문 로드 + 이 주제에서는 아직 질문 안 함으로 리셋
   useEffect(() => {
     if (!selectedTopic) {
@@ -252,7 +378,11 @@ export default function FloatingChatbot() {
                           : 'bg-white text-gray-900 border border-gray-200 rounded-bl-sm'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                      {message.type === 'bot' ? (
+                        renderBotMessageText(message.text)
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                      )}
                     </div>
                     {message.timestamp && (
                       <span className="text-xs text-gray-500 mt-1 px-2">
