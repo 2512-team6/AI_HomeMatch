@@ -1,10 +1,10 @@
 # db_read.py
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
-from dataclasses import asdict
 from datetime import date
-from typing import Any, Dict, Generator, Iterable, List, Literal, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional
 
 import pymysql
 from pymysql.cursors import DictCursor
@@ -36,6 +36,38 @@ def db_conn():
         conn.close()
 
 
+# -----------------------------
+# Text normalization helpers
+# -----------------------------
+_HTML_BR_RE = re.compile(r"(?i)<br\s*/?>")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"[ \t]+")
+
+
+def _strip_html(s: str) -> str:
+    """
+    판례 headnote 계열(issues/summary/referenced_*)에 흔한 <br/> 등 HTML 노이즈 제거.
+    - <br>는 줄바꿈으로 치환
+    - 나머지 태그는 제거
+    """
+    s = _HTML_BR_RE.sub("\n", s)
+    s = _HTML_TAG_RE.sub("", s)
+    return s
+
+
+def _normalize_text(s: str) -> str:
+    """
+    임베딩 입력의 불필요한 노이즈만 정리(구조는 유지).
+    - CRLF 통일
+    - 탭/연속 공백 축소
+    - 과도한 연속 개행(3개 이상) 축소
+    """
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    s = _WS_RE.sub(" ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
 def _clip(text: Optional[str], max_chars: Optional[int]) -> str:
     if not text:
         return ""
@@ -53,18 +85,29 @@ def _build_page_content(kind: DataKind, row: Dict[str, Any]) -> str:
         val = row.get(field)
         if val is None:
             continue
+
         val_s = str(val).strip()
         if not val_s:
             continue
+
+        # ✅ 판례 headnote 필드에 섞인 HTML 제거(전 데이터셋에 적용해도 안전)
+        if "<" in val_s and ">" in val_s:
+            val_s = _strip_html(val_s)
+
+        # clip → normalize 순서(clip 후 정규화로 길이 폭주 방지)
         val_s = _clip(val_s, clips.get(field))
-        # 필드 구분을 넣어두면 법률/판례 텍스트가 길어도 컨텍스트에서 가독성이 좋아짐
+        val_s = _normalize_text(val_s)
+
+        if not val_s:
+            continue
+
+        # 필드 구분 라벨은 유지(컨텍스트 가독성 + 임베딩에도 "어떤 정보인지" 힌트)
         parts.append(f"[{field}]\n{val_s}")
 
     return "\n\n".join(parts).strip()
 
 
 def _common_meta(kind: DataKind, row: Dict[str, Any]) -> Dict[str, Any]:
-    # 공통 메타: 어디서 왔는지, 문서 단위 식별, 페이지 등
     meta: Dict[str, Any] = {
         "data_kind": kind,
         "source_year": row.get("source_year"),
@@ -74,7 +117,6 @@ def _common_meta(kind: DataKind, row: Dict[str, Any]) -> Dict[str, Any]:
         "page_end": row.get("page_end"),
         "title": row.get("title"),
     }
-    # None 제거
     return {k: v for k, v in meta.items() if v is not None}
 
 
@@ -182,7 +224,6 @@ def iter_law_documents(
         with conn.cursor() as cur:
             cur.execute(sql, params)
             for row in cur.fetchall():
-                # config의 law text_fields가 ["title","text"]라면 그대로 잘 합쳐짐
                 content = _build_page_content("law", row)
                 meta = _common_meta("law", row)
                 meta.update(
@@ -209,13 +250,7 @@ def iter_precedent_documents(
 ) -> Generator[Document, None, None]:
     ds = RAG.datasets["precedent"]
 
-    # 1) "필요한 컬럼"만 SELECT 하도록 구성
-    # - 텍스트 합치기에 필요한 컬럼: ds.text_fields
-    # - 메타 생성에 필요한 컬럼: 아래 meta에서 참조하는 것들
-    # - 필터에 필요한 컬럼: where절에서 사용하는 것들
     required_cols = set(ds.text_fields)
-
-    # meta에 쓰는 컬럼들
     required_cols.update(
         [
             "precedent_id",
@@ -224,10 +259,11 @@ def iter_precedent_documents(
             "decision_date",
             "court_name",
             "judgment_type",
+            "decision_type",
+            "case_type_name",
         ]
     )
 
-    # where절에 쓰는 컬럼들(없으면 필터가 안되니 포함)
     if decision_date_from is not None or decision_date_to is not None:
         required_cols.add("decision_date")
     if court_name is not None:
@@ -235,14 +271,10 @@ def iter_precedent_documents(
     if precedent_ids:
         required_cols.add("precedent_id")
 
-    # 정렬에 쓰는 컬럼
     required_cols.add("decision_date")
-
-    # SELECT 절 생성(항상 precedent_id는 있어야 doc_id 만들 수 있음)
     if "precedent_id" not in required_cols:
         required_cols.add("precedent_id")
 
-    # 안전하게 정렬(가독성)
     select_cols = sorted(required_cols)
 
     sql = f"""
@@ -292,7 +324,9 @@ def iter_precedent_documents(
                         if row.get("decision_date")
                         else None
                     ),
+                    "decision_type": row.get("decision_type"),
                     "court_name": row.get("court_name"),
+                    "case_type_name": row.get("case_type_name"),
                     "judgment_type": row.get("judgment_type"),
                 }
                 meta = {k: v for k, v in meta.items() if v is not None}
@@ -302,13 +336,7 @@ def iter_precedent_documents(
 # -----------------------------
 # Unified loader
 # -----------------------------
-
-
 def iter_documents(kind: DataKind, **kwargs: Any) -> Generator[Document, None, None]:
-    """
-    kind에 따라 해당 테이블에서 Document를 yield.
-    kwargs는 각 iter_* 함수의 파라미터를 그대로 전달.
-    """
     if kind == "mediation":
         yield from iter_mediation_documents(**kwargs)
     elif kind == "law":

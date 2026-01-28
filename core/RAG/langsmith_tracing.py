@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from langchain_core.runnables import RunnableConfig
 
-from langchain_step_names import build_chain, RagParams  # 너의 파일명에 맞춰 import
+from langchain_step_names import build_chain, RagParams
 from llm_client_groq import GroqLLMClient, GroqLLMConfig
 
 
@@ -16,14 +16,6 @@ def main() -> None:
     # -----------------------------
     # 1) LangSmith env 체크
     # -----------------------------
-    # .env 에 아래 값들이 있어야 함:
-    # LANGCHAIN_TRACING_V2=true
-    # LANGCHAIN_API_KEY=ls__...
-    # LANGCHAIN_PROJECT=AI_HomeMatch-RAG (원하는 이름)
-    #
-    # 선택:
-    # LANGCHAIN_ENDPOINT=https://api.smith.langchain.com  (보통 기본값이라 없어도 됨)
-
     if os.getenv("LANGCHAIN_TRACING_V2", "").lower() not in ("true", "1", "yes", "on"):
         print(
             "[WARN] LANGCHAIN_TRACING_V2 가 true가 아님. tracing이 기록되지 않을 수 있음."
@@ -46,22 +38,26 @@ def main() -> None:
     # -----------------------------
     # 3) LLM / RAG 파라미터
     # -----------------------------
+    # ✅ "좋은 모델 기본" 가정: 70B 계열로 고정
+    # ✅ JSON/장문 출력 안정성: max_tokens 충분히 확보
     llm = GroqLLMClient(
         cfg=GroqLLMConfig(
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             temperature=0.1,
-            max_tokens=512,
-            user_max_chars=9000,
+            max_tokens=1600,  # 512면 JSON/근거 출력이 잘릴 확률 큼
+            user_max_chars=9000,  # 길면 shrink에서 잘림
             retry=2,
         )
     )
 
+    # ✅ 너무 타이트하면 "근거 부족"이 나와서 LLM이 억지로 채우거나 빈약해짐
+    #    (지금은 테스트니까 최소한 law/precedent/mediation을 조금 넉넉하게)
     rag_params = RagParams(
-        top_k_law=2,
-        top_k_precedent=2,
-        top_k_mediation=1,
-        top_n_evidence_raw=6,
-        top_n_evidence_final=1,
+        top_k_law=4,
+        top_k_precedent=8,
+        top_k_mediation=3,
+        top_n_evidence_raw=10,
+        top_n_evidence_final=2,
     )
 
     chain = build_chain()
@@ -71,12 +67,16 @@ def main() -> None:
     # -----------------------------
     config = RunnableConfig(
         run_name="clause_analyze_pipeline",
-        tags=["rag", "lease", "groq", "layered"],
+        tags=["rag", "lease", "groq", "layered", "json"],
         metadata={
             "top_k_law": rag_params.top_k_law,
             "top_k_precedent": rag_params.top_k_precedent,
             "top_k_mediation": rag_params.top_k_mediation,
+            "top_n_evidence_raw": rag_params.top_n_evidence_raw,
+            "top_n_evidence_final": rag_params.top_n_evidence_final,
             "model": llm.cfg.model,
+            "max_tokens": llm.cfg.max_tokens,
+            "user_max_chars": llm.cfg.user_max_chars,
         },
     )
 

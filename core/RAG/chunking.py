@@ -1,7 +1,8 @@
 # chunking.py
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+import re
+from typing import Iterable, List, Optional, Tuple
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -10,14 +11,44 @@ from config import RAG, DataKind
 from db_read import iter_documents
 
 
+def _normalize_text(s: str) -> str:
+    # db_read에서 이미 정규화하지만, 청킹 과정에서도 overlap 때문에 자투리 노이즈가 생길 수 있어 2차로 가볍게 정리
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
+def _chunk_params(kind: Optional[DataKind]) -> Tuple[int, int]:
+    """
+    kind별로 기본값을 조금 다르게 주고 싶을 때 여기서 조정.
+    - config.py에서 공통 chunk_size/overlap을 조정해둔 상태라,
+      여기서는 kind별 미세조정만 수행(원하면 숫자만 바꾸면 됨).
+    """
+    base_size = RAG.chunk_size
+    base_overlap = RAG.chunk_overlap
+
+    if kind == "law":
+        # 법령은 조문 단위라 너무 길게 잡을 필요가 적고 overlap도 과하면 중복이 커짐
+        return (min(base_size, 1000), min(base_overlap, 120))
+    if kind == "precedent":
+        # headnote 기준: 1000~1400 사이가 무난
+        return (max(base_size, 1100), max(base_overlap, 140))
+    if kind == "mediation":
+        # facts/order_text가 길어 문단 보존이 중요. 약간 더 길게
+        return (max(base_size, 1300), max(base_overlap, 180))
+
+    return (base_size, base_overlap)
+
+
 def get_text_splitter(
     *,
     chunk_size: int,
     chunk_overlap: int,
 ) -> RecursiveCharacterTextSplitter:
     """
-    법률/판례/분쟁사례 모두에 공통으로 무난한 splitter.
-    구분자 우선순위로 의미 단위를 최대한 보존하며 분할.
+    법률/판례/분쟁사례 공통 splitter.
+    한국 법령 문서 기준으로 구분자 우선순위를 조정.
     """
     return RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -25,12 +56,33 @@ def get_text_splitter(
         separators=[
             "\n\n",  # 문단
             "\n",  # 줄
-            "。",  # 일본어 마침표(혹시 섞일 때)
-            ".",  # 마침표
+            # 법령/판례에서 자주 등장하는 구조 단서(문장/항/호 경계)
+            "다.",
+            "라.",
+            "마.",
+            "바.",
+            "사.",
+            "아.",
+            "자.",
+            "차.",  # (선택) 목차형 경계
+            "1.",
+            "2.",
+            "3.",
+            "4.",
+            "5.",
+            "6.",
+            "7.",
+            "8.",
+            "9.",
+            "0.",  # 번호
+            "제",  # "제1조", "제2항" 같은 경계 단서(과하면 삭제 가능)
+            "항",
+            "호",
+            ".",
             "?",
-            "!",  # 문장 끝
-            " ",  # 단어 경계
-            "",  # 최후의 수단(문자 단위)
+            "!",
+            " ",
+            "",
         ],
     )
 
@@ -39,13 +91,14 @@ def chunk_documents(
     docs: Iterable[Document],
     *,
     kind: Optional[DataKind] = None,
+    min_chunk_chars: int = 80,  # ✅ 너무 짧은 조각 제거(검색 노이즈↓)
 ) -> List[Document]:
+    chunk_size, chunk_overlap = _chunk_params(kind)
     splitter = get_text_splitter(
-        chunk_size=RAG.chunk_size,
-        chunk_overlap=RAG.chunk_overlap,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
 
-    # kind가 주어지면 해당 컬렉션명을 chunk_id에 포함 (headnote/fulltext 구분 안전)
     collection_name = None
     if kind is not None:
         collection_name = RAG.datasets[kind].collection_name
@@ -63,12 +116,20 @@ def chunk_documents(
         if kind is not None and "data_kind" not in parent_meta:
             parent_meta["data_kind"] = kind
 
-        pieces = splitter.split_text(doc.page_content or "")
+        base_text = _normalize_text(doc.page_content or "")
+        if not base_text:
+            continue
+
+        pieces = splitter.split_text(base_text)
         if not pieces:
             continue
 
         total = len(pieces)
         for i, text in enumerate(pieces):
+            text = _normalize_text(text)
+            if len(text) < min_chunk_chars:
+                continue
+
             meta = dict(parent_meta)
             meta.update(
                 {
@@ -94,8 +155,6 @@ def chunk_documents(
 # Debug / local check
 # -----------------------------
 if __name__ == "__main__":
-    # 예시: mediation 1건 읽어서 청킹 테스트
-    # (db_read.py의 iter_documents를 사용)
     docs = list(iter_documents("mediation", limit=1))
     chunks = chunk_documents(docs, kind="mediation")
 

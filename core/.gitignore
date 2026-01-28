@@ -5,3 +5,5 @@ pages
 json
 벡터DB생성/chroma_store
 벡터DB생성/__pycache__
+RAG/chroma_store
+RAG/__pycache__

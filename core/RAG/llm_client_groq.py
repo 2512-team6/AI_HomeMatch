@@ -12,10 +12,15 @@ from groq import Groq
 
 @dataclass(frozen=True)
 class GroqLLMConfig:
-    model: str = "llama-3.1-8b-instant"
+    model: str = "llama-3.3-70b-versatile"
     temperature: float = 0.1
-    max_tokens: int = 768  # 기본은 512
-    user_max_chars: int = 9000  # TPM 회피용 하드 컷
+
+    # ✅ JSON 안정성: 출력 토큰 여유를 충분히
+    max_tokens: int = 1600
+
+    # 입력 하드컷(필요시 retry에서 단계적으로 줄임)
+    user_max_chars: int = 9000
+
     retry: int = 2
     retry_sleep_sec: float = 1.0
 
@@ -47,8 +52,8 @@ class GroqLLMClient:
 
     def generate(self, messages: List[Dict[str, str]]) -> str:
         """
-        messages(OpenAI/Groq 스타일)를 받아 문자열 답변을 반환.
-        TPM/413류 에러가 나면 max_tokens / user_max_chars를 줄여 재시도.
+        TPM/413류 에러가 나면 입력(user_max_chars)만 줄여 재시도.
+        ✅ 출력(max_tokens)은 가능한 유지해서 JSON이 중간에 끊기는 문제를 줄인다.
         """
         cfg = self.cfg
         max_tokens = cfg.max_tokens
@@ -71,19 +76,12 @@ class GroqLLMClient:
             except Exception as e:
                 last_err = e
 
-                # 가장 흔한 케이스: 413 / TPM
-                # → 출력 토큰과 입력 길이를 단계적으로 줄여서 재시도
                 if attempt < cfg.retry:
-                    max_tokens = max(
-                        256, int(max_tokens * 0.7)
-                    )  # 512 -> 358 -> 250(최소 256)
-                    user_max_chars = max(
-                        6000, int(user_max_chars * 0.8)
-                    )  # 9000 -> 7200 -> 5760(최소 6000)
+                    # ✅ 입력만 줄이자(출력 토큰은 유지)
+                    user_max_chars = max(5000, int(user_max_chars * 0.75))
                     time.sleep(cfg.retry_sleep_sec)
                     continue
 
                 raise
 
-        # 여긴 사실상 도달 안 함
         raise last_err or RuntimeError("Unknown Groq client error")

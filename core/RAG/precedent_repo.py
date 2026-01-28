@@ -23,7 +23,6 @@ class PrecedentRecord:
 
 
 def _to_iso(d: Any) -> Optional[str]:
-    # pymysql이 date/datetime으로 주는 경우가 많아서 안전 변환
     if d is None:
         return None
     try:
@@ -37,18 +36,23 @@ def fetch_precedents_by_ids(
     *,
     include_full_text: bool = True,
 ) -> Dict[str, PrecedentRecord]:
-    """
-    precedent_id -> PrecedentRecord dict로 반환.
-    include_full_text=False로 하면 전문은 안 가져오게 할 수 있음(가벼운 조회).
-    """
-    ids = [str(x).strip() for x in precedent_ids if str(x).strip()]
+    # ✅ 공백 제거 + 중복 제거(순서 유지)
+    seen = set()
+    ids: List[str] = []
+    for x in precedent_ids:
+        s = str(x).strip()
+        if not s:
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        ids.append(s)
+
     if not ids:
         return {}
 
-    # IN 절 파라미터 구성
     placeholders = ",".join(["%s"] * len(ids))
 
-    # full_text는 옵션으로
     select_cols = [
         "precedent_id",
         "case_name",
@@ -64,18 +68,21 @@ def fetch_precedents_by_ids(
     if include_full_text:
         select_cols.append("full_text")
 
+    # ✅ 입력 ids 순서를 유지하면 튜닝/디버깅이 쉬움 (MariaDB/MySQL)
     sql = f"""
     SELECT
       {", ".join(select_cols)}
     FROM precedents
     WHERE precedent_id IN ({placeholders})
+    ORDER BY FIELD(precedent_id, {placeholders})
     """
 
     out: Dict[str, PrecedentRecord] = {}
 
     with db_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, ids)
+            # ORDER BY FIELD에 ids가 한 번 더 들어가므로 params도 2번
+            cur.execute(sql, ids + ids)
             rows = cur.fetchall()
 
     for row in rows:

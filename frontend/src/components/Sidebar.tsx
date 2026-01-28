@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, FileText, FileCheck, AlertTriangle, Building, Scale, MessageCircle, Settings } from 'lucide-react'
+import { Home, FileText, FileCheck, AlertTriangle, Building, Scale, Settings } from 'lucide-react'
 import { useSidebar } from '../contexts/SidebarContext'
 
 export default function Sidebar() {
@@ -15,7 +15,6 @@ export default function Sidebar() {
   ]
 
   const bottomItems = [
-    { path: '/chatbot', label: '챗봇', icon: MessageCircle },
     { path: '/mypage', label: '설정', icon: Settings },
   ]
 

@@ -6,8 +6,6 @@ import com.homematch.domain.user.UserService;
 
 import lombok.RequiredArgsConstructor;
 
-import java.util.Map;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,21 +19,8 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        System.out.println(">>> 로그인 요청 이메일: " + request.getEmail());
-        
-        // 1. 토큰 생성
-        String token = loginService.login(request);
-        
-        // 2. 닉네임과 role 가져오기
-        String nickname = userService.getNicknameByEmail(request.getEmail());
-        String role = userService.getRoleByEmail(request.getEmail());
-
-        // 3. 응답 데이터 구성 (nickname, role 추가)
-        return ResponseEntity.ok(Map.of(
-            "accessToken", token,
-            "nickname", nickname,
-            "role", role
-        ));
+        // users 조회 1회만 수행 (LoginService에서 token·nickname·role 한꺼번에 반환)
+        return ResponseEntity.ok(loginService.login(request));
     }
 
     @PostMapping("/logout")

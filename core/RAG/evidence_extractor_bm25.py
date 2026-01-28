@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 from precedent_repo import PrecedentRecord
 
@@ -12,29 +12,118 @@ from precedent_repo import PrecedentRecord
 # -----------------------------
 # Tokenize / split helpers
 # -----------------------------
-_WORD_RE = re.compile(r"[0-9A-Za-z가-힣]+")
+# ✅ 한자(\u4e00-\u9fff), 가운데점(·)까지 포함
+_WORD_RE = re.compile(r"[0-9A-Za-z가-힣\u4e00-\u9fff·]+")
+
+_HTML_BR_RE = re.compile(r"(?i)<br\s*/?>")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"[ \t]+")
+
+
+def _strip_html(text: str) -> str:
+    if not text:
+        return ""
+    t = _HTML_BR_RE.sub("\n", text)
+    t = _HTML_TAG_RE.sub("", t)
+    return t
+
+
+def _normalize_text(text: str) -> str:
+    if not text:
+        return ""
+    t = text.replace("\r\n", "\n").replace("\r", "\n")
+    t = _WS_RE.sub(" ", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
 
 
 def tokenize_ko(text: str) -> List[str]:
     """
     아주 단순 토크나이저.
-    - 한국어/영문/숫자 덩어리 기준
-    - 법률 텍스트는 키워드 매칭이 꽤 잘 먹히므로 이 정도로도 1차 근거 추출 가능
+    - 한국어/영문/숫자/한자/· 덩어리 기준
     """
-    return _WORD_RE.findall((text or "").lower())
+    t = _normalize_text(_strip_html(text))
+    return _WORD_RE.findall(t.lower())
 
 
-def split_paragraphs(full_text: str) -> List[str]:
+def _merge_lines_to_paragraphs(
+    lines: List[str],
+    *,
+    min_paragraph_chars: int,
+    max_paragraph_chars: int = 1800,
+) -> List[str]:
     """
-    판례 전문은 <br/> 같은 HTML이 섞여 있을 수 있으니 문단 경계로 활용.
-    - <br/>/줄바꿈/빈줄 등을 문단 경계로 사용
+    줄 단위로만 분리된 텍스트를 '적당한 문단'으로 합쳐서 BM25가 근거를 잡기 쉽게 만든다.
+    - 너무 짧은 줄은 누적해서 합침
+    - 너무 길어지면 강제로 끊어줌
+    """
+    paras: List[str] = []
+    buf: List[str] = []
+    buf_len = 0
+
+    def flush():
+        nonlocal buf, buf_len
+        if not buf:
+            return
+        p = "\n".join(buf).strip()
+        if p:
+            paras.append(p)
+        buf = []
+        buf_len = 0
+
+    for ln in lines:
+        ln = ln.strip()
+        if not ln:
+            # 빈 줄 = 문단 경계
+            flush()
+            continue
+
+        # 누적
+        buf.append(ln)
+        buf_len += len(ln) + 1
+
+        # 너무 길어지면 끊기
+        if buf_len >= max_paragraph_chars:
+            flush()
+            continue
+
+        # 충분히 길어지면 문단 확정
+        if buf_len >= min_paragraph_chars:
+            flush()
+
+    flush()
+    return paras
+
+
+def split_paragraphs(full_text: str, *, min_paragraph_chars: int = 40) -> List[str]:
+    """
+    판례 전문은 <br/> 같은 HTML이 섞여 있을 수 있음.
+    1) HTML 제거 + 정규화
+    2) 빈줄 기준 분리
+    3) 문단 분리가 약하면(너무 적게 나오면) 줄 단위 fallback 후 적당히 합치기
     """
     if not full_text:
         return []
-    t = full_text.replace("<br/>", "\n").replace("<br />", "\n")
-    # 빈 줄 기준으로 1차 분리
+
+    t = _normalize_text(_strip_html(full_text))
+    if not t:
+        return []
+
+    # 1차: 빈 줄 기준 문단 분리
     raw = re.split(r"\n\s*\n+", t)
     paras = [p.strip() for p in raw if p and p.strip()]
+
+    # 문단이 너무 적으면(예: <br/>만 잔뜩 있고 빈 줄이 없는 전문) fallback
+    if len(paras) <= 2:
+        lines = t.split("\n")
+        paras = _merge_lines_to_paragraphs(
+            lines,
+            min_paragraph_chars=max(min_paragraph_chars, 120),
+            max_paragraph_chars=1800,
+        )
+
+    # 너무 짧은 문단 제거
+    paras = [p for p in paras if len(p) >= min_paragraph_chars]
     return paras
 
 
@@ -63,7 +152,6 @@ class BM25Index:
         return len(self.paragraphs)
 
     def idf(self, term: str) -> float:
-        # BM25 IDF (Okapi)
         df = self.df.get(term, 0)
         return math.log(1 + (self.N - df + 0.5) / (df + 0.5))
 
@@ -98,7 +186,6 @@ def build_bm25_index(paragraphs: List[str]) -> BM25Index:
         doc_tokens.append(toks)
         total_len += len(toks)
 
-        # df는 문서(문단) 단위 등장 여부
         seen = set(toks)
         for w in seen:
             df[w] = df.get(w, 0) + 1
@@ -122,12 +209,6 @@ def extract_evidence_bm25(
     top_n_per_case: int = 3,
     min_paragraph_chars: int = 40,
 ) -> Dict[str, List[EvidenceSpan]]:
-    """
-    판례별 full_text에서 clause_text와 관련 높은 문단을 top_n_per_case 만큼 추출.
-
-    return:
-      { precedent_id: [EvidenceSpan, ...] }
-    """
     q_tokens = tokenize_ko(clause_text)
     if not q_tokens:
         return {}
@@ -138,9 +219,7 @@ def extract_evidence_bm25(
         if not p.full_text:
             continue
 
-        paras = split_paragraphs(p.full_text)
-        # 너무 짧은 문단(제목/당사자 표기 등) 제거
-        paras = [x for x in paras if len(x) >= min_paragraph_chars]
+        paras = split_paragraphs(p.full_text, min_paragraph_chars=min_paragraph_chars)
         if not paras:
             continue
 

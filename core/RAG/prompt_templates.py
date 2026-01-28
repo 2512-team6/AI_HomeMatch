@@ -12,39 +12,39 @@ T = TypeVar("T")
 # Output schema (for your UI / API)
 # -----------------------------
 OUTPUT_FORMAT = """\
-다음 형식으로만 답변하세요(마크다운 사용 가능). 매우 중요: 중복 금지.
+Return ONLY a valid JSON object (no markdown, no code fences, no extra text).
+JSON keys are fixed in English. All natural-language string VALUES must be written in Korean.
 
-## 1) 결론
-- (한 줄 요약: 해당 특약의 리스크/유효성/주의점)
+{
+  "conclusion": "string (one sentence, Korean)",
+  "risk_points": ["string", "string", "string"],
+  "law_basis": [
+    { "text": "string (Korean)", "source_id": "LAW:<doc_id>" }
+  ],
+  "precedent_basis": [
+    {
+      "why_important": "string (Korean, 1-2 sentences)",
+      "source_id": "PREC:<precedent_id>",
+      "evidence": ["string (Korean)"]
+    }
+  ],
+  "mediation_cases": [
+    { "text": "string (Korean)", "source_id": "MED:<doc_id>" }
+  ],
+  "recommended_clauses": ["string (Korean)"]
+}
 
-## 2) 리스크 포인트
-- (핵심 쟁점 기본 3개 많다면 4개까지 허용, 각 항목은 짧게)
-
-## 3) 관련 법령 근거
-- 법령 항목은 1~3개
-- 각 항목은 서로 중복되지 않게 작성
-- 각 항목 끝에 출처 1회만 붙이기: [LAW:<doc_id>]
-- 같은 [LAW:<doc_id>]를 여러 번 반복하지 말 것
-
-## 4) 관련 판례 근거
-- 판례 항목은 2개
-- 각 판례는 "왜 중요한지"를 1~2문장으로 설명
-- 반드시 제공된 [PRECEDENT_EVIDENCE] 문단을 인용/요약
-- 각 항목 끝에 출처 1회만 붙이기: [PREC:<precedent_id>]
-- 같은 [PREC:<precedent_id>]를 여러 번 반복하지 말 것
-
-## 5) 분쟁조정사례 참고
-- 조정사례 항목은 0~2개
-- 유사 분쟁 패턴/결론을 요약하고 끝에 출처 1회만 붙이기: [MED:<doc_id>]
-- 같은 [MED:<doc_id>]를 여러 번 반복하지 말 것
-- 참고할 사례가 없으면 "해당 없음"이라고 명시
-
-## 6) 실무 권장 문구(수정안)
-- 특약을 더 안전하게 바꾸는 예시 문구 1~3개
-- 단, 확정적 단정 대신 조건/예외를 명시
-
-## 7) 불확실성 / 추가 확인 질문
-- 사실관계가 부족하면 "추가 확인 질문" 2~5개
+Rules:
+- JSON must be parseable by json.loads.
+- If you cannot find supporting sources in the provided context, use empty arrays [].
+- Do NOT invent any source_id. source_id must exist in the context block exactly.
+- precedent_basis.evidence must come from [PRECEDENT_EVIDENCE] only. If missing, precedent_basis=[]
+- Counts:
+  - risk_points: exactly 3 items (max 4 only if necessary).
+  - law_basis: 0~3 items.
+  - precedent_basis: 0~2 items.
+  - mediation_cases: 0~2 items.
+  - recommended_clauses: 1~3 items.
 """
 
 
@@ -62,6 +62,7 @@ SYSTEM_PROMPT = """\
 1) 모르는 내용은 모른다고 말하고, 추측으로 단정하지 않는다.
 2) 근거가 있는 내용만 말한다. 근거가 부족하면 "추가 확인 질문"으로 돌린다.
 3) 반드시 제공된 컨텍스트(법령/판례/조정사례) 안에서만 인용/요약한다.
+3-1) precedent_basis.evidence는 반드시 [PRECEDENT_EVIDENCE]에서만 가져오고, headnote만 보고 근거를 만들지 않는다.
 4) 출력에는 각 항목 끝에 출처 태그를 정확히 1회만 붙인다:
    - 법령: [LAW:<doc_id>]
    - 판례: [PREC:<precedent_id>]

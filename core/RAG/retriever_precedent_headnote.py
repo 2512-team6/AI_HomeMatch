@@ -23,15 +23,10 @@ class PrecedentHeadnoteHit:
 
 
 def _extract_precedent_id(meta: Dict[str, Any]) -> Optional[str]:
-    """
-    precedent_id는 chunk metadata에 있어야 정상.
-    없으면 parent_doc_id/doc_id에서 보조 추출 시도.
-    """
     pid = meta.get("precedent_id")
     if pid:
         return str(pid)
 
-    # fallback: "precedent:76504" 같은 형태에서 추출
     for key in ("doc_id", "parent_doc_id"):
         v = meta.get(key)
         if isinstance(v, str) and v.startswith("precedent:"):
@@ -48,31 +43,39 @@ def retrieve_precedent_headnote(
 ) -> List[PrecedentHeadnoteHit]:
     col_name = RAG.datasets["precedent"].collection_name
 
+    # ✅ 청크 검색은 중복이 많으니 "좀 더 넉넉히" 가져온 뒤 precedent_id 기준 dedupe
+    raw_top_k = max(top_k * 3, top_k)
+
     hits: List[SearchHit] = search_chroma(
         collection_name=col_name,
         query_text=clause_text,
-        top_k=top_k,
+        top_k=raw_top_k,
         model=model,
     )
 
-    out: List[PrecedentHeadnoteHit] = []
+    # precedent_id별로 가장 좋은(distance 가장 낮은) hit만 유지
+    best_by_pid: Dict[str, PrecedentHeadnoteHit] = {}
+
     for h in hits:
         meta = dict(h.doc.metadata or {})
         precedent_id = _extract_precedent_id(meta)
         if not precedent_id:
-            # precedent_id가 없으면 2차에서 전문을 못 가져오므로 제외(또는 로깅)
             continue
 
-        out.append(
-            PrecedentHeadnoteHit(
-                precedent_id=precedent_id,
-                case_name=meta.get("case_name"),
-                case_number=meta.get("case_number"),
-                decision_date=meta.get("decision_date"),
-                distance=h.distance,
-                doc=h.doc,
-                chroma_id=h.chroma_id,
-            )
+        cand = PrecedentHeadnoteHit(
+            precedent_id=precedent_id,
+            case_name=meta.get("case_name"),
+            case_number=meta.get("case_number"),
+            decision_date=meta.get("decision_date"),
+            distance=h.distance,
+            doc=h.doc,
+            chroma_id=h.chroma_id,
         )
 
-    return out
+        prev = best_by_pid.get(precedent_id)
+        if prev is None or cand.distance < prev.distance:
+            best_by_pid[precedent_id] = cand
+
+    # 거리 순으로 정렬 후 상위 top_k 판례만 반환
+    out = sorted(best_by_pid.values(), key=lambda x: x.distance)
+    return out[:top_k]

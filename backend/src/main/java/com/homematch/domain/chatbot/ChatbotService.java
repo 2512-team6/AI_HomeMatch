@@ -19,7 +19,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import reactor.core.publisher.Flux;
 
 @Service
 @RequiredArgsConstructor
@@ -49,8 +53,14 @@ public class ChatbotService {
         }
     }
 
-    // 가이드 데이터를 문자열로 변환 (LLM 컨텍스트용). topic 있으면 해당 섹션만 사용
-    private String getGuideContextAsString(String topic) {
+    /** 가이드 컨텍스트 최대 문자 수 (토큰·비용 관리) */
+    private static final int DEFAULT_MAX_GUIDE_CHARS = 12_000;
+
+    /**
+     * 가이드 데이터를 문자열로 변환 (LLM 컨텍스트용).
+     * topic 있으면 해당 섹션만, userMessage 있으면 관련 구간 우선 포함, maxChars > 0 이면 잘라냄.
+     */
+    private String getGuideContextAsString(String topic, String userMessage, int maxChars) {
         JsonNode guides = loadGuideData();
         if (guides == null) {
             return "가이드 데이터를 불러올 수 없습니다.";
@@ -65,10 +75,52 @@ public class ChatbotService {
                 default -> { }
             }
         }
+        if (userMessage != null && !userMessage.isBlank() && target.isObject()) {
+            Set<String> tokens = Stream.of(userMessage.replaceAll("\\s+", " ").trim().split(" "))
+                    .map(String::trim)
+                    .filter(s -> s.length() >= 2)
+                    .collect(Collectors.toSet());
+            if (!tokens.isEmpty()) {
+                JsonNode reduced = reduceGuideByRelevance(target, tokens);
+                if (reduced != null) {
+                    target = reduced;
+                }
+            }
+        }
+        String out;
         try {
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(target);
+            out = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(target);
         } catch (Exception e) {
-            return target.toString();
+            out = target.toString();
+        }
+        if (maxChars > 0 && out.length() > maxChars) {
+            out = out.substring(0, maxChars) + "\n\n(가이드 내용이 많아 일부만 사용했습니다.)";
+        }
+        return out;
+    }
+
+    /** userMessage 토큰과 겹치는 필드만 남긴 서브트리. 없으면 null(전체 유지) */
+    private JsonNode reduceGuideByRelevance(JsonNode node, Set<String> tokens) {
+        if (!node.isObject()) return null;
+        List<String> keep = new ArrayList<>();
+        for (var it = node.fields(); it.hasNext(); ) {
+            var e = it.next();
+            String valueStr = e.getValue().toString();
+            boolean match = tokens.stream().anyMatch(t -> valueStr.contains(t));
+            if (match) {
+                keep.add(e.getKey());
+            }
+        }
+        if (keep.isEmpty()) return null;
+        if (keep.size() == node.size()) return node;
+        try {
+            var out = objectMapper.createObjectNode();
+            for (String k : keep) {
+                out.set(k, node.get(k));
+            }
+            return out;
+        } catch (Exception ex) {
+            return null;
         }
     }
 
@@ -192,8 +244,8 @@ public class ChatbotService {
             }
             if (node.has("check_items") && node.get("check_items").isArray()) {
                 for (JsonNode ci : node.get("check_items")) {
-                    if (ci.has("question")) sb.append("· ").append(ci.get("question").asText());
-                    if (ci.has("check")) sb.append(" → ").append(ci.get("check").asText());
+                    if (ci.has("item")) sb.append("· ").append(ci.get("item").asText());
+                    if (ci.has("note")) sb.append(" ").append(ci.get("note").asText());
                     sb.append("\n");
                 }
                 sb.append("\n");
@@ -284,7 +336,7 @@ public class ChatbotService {
                     .build();
         }
 
-        String guideContext = getGuideContextAsString(request.getTopic());
+        String guideContext = getGuideContextAsString(request.getTopic(), request.getText(), DEFAULT_MAX_GUIDE_CHARS);
 
         // OpenAI 응답 생성
         String botContent;
@@ -317,6 +369,66 @@ public class ChatbotService {
                 .text(saved.getContent())
                 .timestamp(saved.getCreatedAt())
                 .build();
+    }
+
+    /** 스트리밍: 사용자 메시지 저장 후 LLM 스트림 Flux 반환. 완료 시 봇 메시지 저장은 호출측(Controller)에서 함. */
+    public Flux<String> streamResponse(Integer userNo, ChatbotMessageRequest request) {
+        ChatSession session = getOrCreateSession(userNo);
+        ChatMessage userMsg = ChatMessage.builder()
+                .session(session)
+                .role("user")
+                .content(request.getText())
+                .createdAt(LocalDateTime.now())
+                .build();
+        chatMessageRepository.save(userMsg);
+
+        List<ChatMessage> historyAsc = chatMessageRepository.findBySession_SessionIdOrderByCreatedAtAsc(session.getSessionId());
+        List<Map<String, String>> conversationHistory = new ArrayList<>();
+        int start = Math.max(0, historyAsc.size() - 10);
+        for (int i = start; i < historyAsc.size(); i++) {
+            ChatMessage m = historyAsc.get(i);
+            Map<String, String> entry = new HashMap<>();
+            entry.put("role", m.getRole());
+            entry.put("content", m.getContent());
+            conversationHistory.add(entry);
+        }
+
+        String directAnswer = resolveDirectGuideAnswer(request.getTopic(), request.getText());
+        if (directAnswer != null && !directAnswer.isBlank()) {
+            ChatMessage botMsg = ChatMessage.builder()
+                    .session(session)
+                    .role("assistant")
+                    .content(directAnswer)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            chatMessageRepository.save(botMsg);
+            return Flux.just(directAnswer);
+        }
+
+        String guideContext = getGuideContextAsString(request.getTopic(), request.getText(), DEFAULT_MAX_GUIDE_CHARS);
+        return openAIService.generateResponseStreaming(
+                request.getText(),
+                guideContext,
+                conversationHistory
+        );
+    }
+
+    /** 스트리밍 종료 시 클라이언트에 보낼 정규화된 전체 텍스트(띄어쓰기·줄바꿈 등) 반환. appendBotMessage 전에 한 번만 호출해 사용. */
+    public String normalizeResponseTextForDisplay(String raw) {
+        return openAIService.normalizeResponseText(raw != null ? raw : "");
+    }
+
+    /** 스트리밍 완료 후, 현재 세션에 봇 메시지 한 건 저장. 저장 전 마크다운 제거·문장 끝/띄어쓰기/줄바꿈 정리 */
+    public void appendBotMessage(Integer userNo, String content) {
+        String normalized = openAIService.normalizeResponseText(content != null ? content : "");
+        ChatSession session = getOrCreateSession(userNo);
+        ChatMessage botMsg = ChatMessage.builder()
+                .session(session)
+                .role("assistant")
+                .content(normalized)
+                .createdAt(LocalDateTime.now())
+                .build();
+        chatMessageRepository.save(botMsg);
     }
 
     // 메시지 히스토리 조회 (최신 세션 기준, 최신순)
@@ -432,6 +544,7 @@ public class ChatbotService {
             return "매물은 매물 찾기에서 지역·가격·옵션으로 검색할 수 있어요.";
         }
 
-        return "계약서, 등기부등본, 거주·퇴실 관리, 매물 관련해서 궁금한 걸 입력창 위에서 주제만 골라 보내 주시면 돼요.";
+        return "입력해 주신 내용은 현재 제공 중인 계약서 점검 서비스와는 관련이 없어 정확한 안내가 어려운 점 양해 부탁드립니다.\n"
+                + "계약서 점검과 관련된 궁금한 내용을 입력해 주시면 바로 안내해 드릴게요.";
     }
 }

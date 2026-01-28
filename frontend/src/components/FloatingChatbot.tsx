@@ -41,6 +41,132 @@ export default function FloatingChatbot() {
   const [hasSentMessageInCurrentTopic, setHasSentMessageInCurrentTopic] = useState(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
 
+  // 봇 답변 가독성 향상을 위한 렌더링 헬퍼
+  const renderBotMessageText = (text: string) => {
+    // 줄 단위로 나눈 뒤, 번호/불릿/일반 문장을 구분해서 렌더링
+    const rawLines = text.split('\n')
+    const lines = rawLines.map((line) => line.trim()).filter((line) => line.length > 0)
+
+    const blocks: JSX.Element[] = []
+
+    let listBuffer: string[] = []
+
+    const flushList = () => {
+      if (!listBuffer.length) return
+      blocks.push(
+        <ul key={`list-${blocks.length}`} className="list-disc list-inside space-y-1 pl-1">
+          {listBuffer.map((item, i) => (
+            <li key={i} className="text-sm leading-relaxed">
+              {item}
+            </li>
+          ))}
+        </ul>
+      )
+      listBuffer = []
+    }
+
+    // 첫 줄은 제목/요약일 가능성이 높으니 따로 처리
+    lines.forEach((line, index) => {
+      const numbered = line.match(/^(\d+)[\.\)]\s*(.*)$/)
+      const bulleted = line.match(/^[-•]\s*(.*)$/)
+
+      if (numbered || bulleted) {
+        const content = numbered ? numbered[2] || numbered[0] : bulleted?.[1] || line
+        listBuffer.push(content)
+        return
+      }
+
+      // 리스트가 끝났으면 먼저 플러시
+      if (listBuffer.length) {
+        flushList()
+      }
+
+      const isNote =
+        /^[(（].*[)）]$/.test(line) ||
+        line.startsWith('※') ||
+        line.startsWith('참고') ||
+        line.includes('참고:')
+
+      // 특정 키워드 강조용 헬퍼
+      const highlightKeywords = (content: string) => {
+        const KEYWORDS = ['보증금', '대항력', '우선변제권']
+        const parts: JSX.Element[] = []
+
+        let remaining = content
+        let key = 0
+
+        while (remaining.length > 0) {
+          let earliestIndex = -1
+          let matched = ''
+
+          for (const kw of KEYWORDS) {
+            const idx = remaining.indexOf(kw)
+            if (idx !== -1 && (earliestIndex === -1 || idx < earliestIndex)) {
+              earliestIndex = idx
+              matched = kw
+            }
+          }
+
+          if (earliestIndex === -1) {
+            parts.push(
+              <span key={key++}>
+                {remaining}
+              </span>
+            )
+            break
+          }
+
+          if (earliestIndex > 0) {
+            parts.push(
+              <span key={key++}>
+                {remaining.slice(0, earliestIndex)}
+              </span>
+            )
+          }
+
+          parts.push(
+            <span key={key++} className="font-semibold text-primary-700">
+              {matched}
+            </span>
+          )
+
+          remaining = remaining.slice(earliestIndex + matched.length)
+        }
+
+        return parts
+      }
+
+      // 첫 번째 줄은 제목/요약 느낌으로 조금 더 강조
+      if (index === 0 && !numbered && !bulleted && !isNote) {
+        blocks.push(
+          <p
+            key={`p-${index}`}
+            className="text-sm font-semibold text-gray-900 whitespace-pre-wrap mb-1"
+          >
+            {highlightKeywords(line)}
+          </p>
+        )
+        return
+      }
+
+      blocks.push(
+        <p
+          key={`p-${index}`}
+          className={`text-sm leading-relaxed whitespace-pre-wrap ${
+            isNote ? 'text-gray-500 mt-1' : ''
+          }`}
+        >
+          {highlightKeywords(line)}
+        </p>
+      )
+    })
+
+    // 마지막에 남은 리스트 처리
+    flushList()
+
+    return <div className="space-y-1">{blocks}</div>
+  }
+
   // 주제 선택 시 해당 주제 추천 질문 로드 + 이 주제에서는 아직 질문 안 함으로 리셋
   useEffect(() => {
     if (!selectedTopic) {
@@ -98,6 +224,36 @@ export default function FloatingChatbot() {
     )
   }
 
+  /** 스트리밍 SSE 응답을 읽어 청크마다 봇 메시지 텍스트 갱신. 이벤트는 \n\n 구분, 한 이벤트에 data: 여러 줄이면 \n으로 이어 붙임. */
+  const consumeStream = async (
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onChunk: (delta: string) => void,
+  ) => {
+    const dec = new TextDecoder()
+    let buf = ''
+    const pushEvent = (ev: string) => {
+      const dataLines = ev.split('\n').filter((l) => l.startsWith('data:'))
+      if (dataLines.length === 0) return
+      const payload = dataLines.map((l) => l.slice(5).trimStart()).join('\n')
+      if (payload) onChunk(payload)
+    }
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const events = buf.split('\n\n')
+        buf = events.pop() ?? ''
+        for (const ev of events) {
+          pushEvent(ev)
+        }
+      }
+      if (buf.trim()) pushEvent(buf)
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
   const sendMessageWithText = async (messageText: string) => {
     if (!messageText.trim() || isLoading) return
     setHasSentMessageInCurrentTopic(true)
@@ -109,10 +265,12 @@ export default function FloatingChatbot() {
     }
     setMessages((prev) => [...prev, userMessage])
     setIsLoading(true)
+    const botId = Date.now() + 1
+    setMessages((prev) => [...prev, { id: botId, type: 'bot', text: '', timestamp: new Date() }])
     try {
       const token = localStorage.getItem('accessToken')
       if (!token) throw new Error('로그인이 필요합니다.')
-      const response = await fetch('http://localhost:8080/api/chatbot/messages', {
+      const response = await fetch('http://localhost:8080/api/chatbot/messages/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -121,26 +279,42 @@ export default function FloatingChatbot() {
         body: JSON.stringify({ text: messageText.trim(), topic: selectedTopic ?? undefined }),
       })
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: '서버 오류가 발생했습니다.' }))
-        throw new Error(errorData.error || '메시지 전송에 실패했습니다.')
+        const errBody = await response.text()
+        let errMsg = '메시지 전송에 실패했습니다.'
+        try {
+          const j = JSON.parse(errBody)
+          if (j?.error) errMsg = j.error
+        } catch {
+          if (errBody) errMsg = errBody.slice(0, 200)
+        }
+        throw new Error(errMsg)
       }
-      const botResponse: ChatbotMessageResponse = await response.json()
-      const botMessage: Message = {
-        id: botResponse.id || Date.now(),
-        type: 'bot',
-        text: botResponse.text,
-        timestamp: botResponse.timestamp ? new Date(botResponse.timestamp) : new Date(),
-      }
-      setMessages((prev) => [...prev, botMessage])
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('스트리밍 응답을 읽을 수 없습니다.')
+      const FINAL_PREFIX = '[FINAL]\n'
+      await consumeStream(reader, (delta) => {
+        setMessages((prev) => {
+          const i = prev.findIndex((m) => m.id === botId)
+          if (i < 0) return prev
+          const next = [...prev]
+          if (delta.startsWith(FINAL_PREFIX)) {
+            next[i] = { ...next[i], text: delta.slice(FINAL_PREFIX.length) }
+          } else {
+            next[i] = { ...next[i], text: (next[i].text || '') + delta }
+          }
+          return next
+        })
+      })
     } catch (error) {
       console.error('메시지 전송 오류:', error)
-      const errorMessage: Message = {
-        id: Date.now(),
-        type: 'bot',
-        text: error instanceof Error ? error.message : '메시지 전송 중 오류가 발생했습니다.',
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, errorMessage])
+      const errText = error instanceof Error ? error.message : '메시지 전송 중 오류가 발생했습니다.'
+      setMessages((prev) => {
+        const i = prev.findIndex((m) => m.id === botId)
+        if (i < 0) return [...prev, { id: botId, type: 'bot', text: errText, timestamp: new Date() }]
+        const next = [...prev]
+        next[i] = { ...next[i], text: errText }
+        return next
+      })
     } finally {
       setIsLoading(false)
     }
@@ -252,7 +426,11 @@ export default function FloatingChatbot() {
                           : 'bg-white text-gray-900 border border-gray-200 rounded-bl-sm'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                      {message.type === 'bot' ? (
+                        renderBotMessageText(message.text)
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                      )}
                     </div>
                     {message.timestamp && (
                       <span className="text-xs text-gray-500 mt-1 px-2">

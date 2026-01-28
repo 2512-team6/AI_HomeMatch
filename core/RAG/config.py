@@ -40,14 +40,6 @@ def load_db_config() -> DBConfig:
 # -----------------------------
 @dataclass(frozen=True)
 class ObservabilityConfig:
-    """
-    - LangChain 기반 트레이싱을 사용할 예정이므로 .env에서는 보통 아래 키 조합을 권장:
-      LANGCHAIN_TRACING_V2=true
-      LANGCHAIN_API_KEY=...
-      LANGCHAIN_PROJECT=...
-      LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
-    """
-
     enabled: bool = True
     project: str = (
         os.environ.get("LANGCHAIN_PROJECT")
@@ -73,20 +65,10 @@ class DatasetConfig:
     - 벡터DB에 넣을지 정의
     """
 
-    # MariaDB table name
     table_name: str
-
-    # Chroma collection name
     collection_name: str
-
-    # 텍스트로 합칠 컬럼 목록(순서 중요)
     text_fields: List[str]
-
-    # 메타데이터로 넣을 컬럼 목록(문서 추적/필터링용)
     metadata_fields: List[str]
-
-    # 너무 긴 필드가 있으면 앞부분만 잘라서 넣고 싶을 때(선택)
-    # 예: {"full_text": 12000, "text": 12000}
     field_max_chars: Optional[Dict[str, int]] = None
 
 
@@ -95,9 +77,11 @@ class RAGConfig:
     # Storage
     chroma_dir: Path = Path("chroma_store")
 
-    # Chunking (LangChain TextSplitter에 그대로 사용)
-    chunk_size: int = 2000
-    chunk_overlap: int = 200
+    # Chunking (현 chunking.py가 공통값만 쓰므로, 여기서는 공통값을 "안전하게" 조정)
+    # - 법령 조문은 짧은 편이라 지나치게 큰 chunk_size가 필요 없음
+    # - 분쟁조정사례/판례(headnote)는 문단 길이가 길어질 수 있어 과도한 chunk_size는 품질 저하 가능
+    chunk_size: int = 1200
+    chunk_overlap: int = 150
 
     # Retrieval
     top_k: int = 4
@@ -121,6 +105,8 @@ def _default_rag_config() -> RAGConfig:
     # -------------------------
     # 판례 필드 세트 분리
     # -------------------------
+    # headnote 계열 텍스트는 <br/> 등 HTML이 섞이는 경우가 많고 길이도 케이스마다 편차가 큼.
+    # "너무 긴 1개 문서"가 생기지 않도록 필드별 clip을 기본으로 둠.
     precedent_headnote = DatasetConfig(
         table_name="precedents",
         collection_name="precedent_cases_headnote",
@@ -131,7 +117,6 @@ def _default_rag_config() -> RAGConfig:
             "summary",  # 판결요지
             "referenced_laws",  # 참조조문
             "referenced_cases",  # 참조판례
-            # "full_text"  # ❌ 1차 벡터화에서는 제외
         ],
         metadata_fields=[
             "precedent_id",
@@ -143,8 +128,12 @@ def _default_rag_config() -> RAGConfig:
             "case_number",
             "case_name",
         ],
-        # headnote는 보통 길이가 과하지 않지만, 필요하면 제한 가능
-        # field_max_chars={"summary": 12000, "issues": 12000},
+        field_max_chars={
+            "issues": 6000,
+            "summary": 8000,
+            "referenced_laws": 4000,
+            "referenced_cases": 3000,
+        },
     )
 
     precedent_fulltext = DatasetConfig(
@@ -156,11 +145,10 @@ def _default_rag_config() -> RAGConfig:
             "full_text",
         ],
         metadata_fields=precedent_headnote.metadata_fields,
-        # 전문이 매우 길어질 수 있으니 현실적으로 제한 두는 경우가 많음
-        field_max_chars={"full_text": 30000},
+        # 전문은 매우 길어질 수 있으니 "임베딩 입력 폭발" 방지용 clip
+        field_max_chars={"full_text": 24000},
     )
 
-    # 기본 precedent dataset은 "headnote"로 고정
     selected_precedent = (
         precedent_fulltext
         if PRECEDENT_VECTOR_MODE == "fulltext"
@@ -172,6 +160,8 @@ def _default_rag_config() -> RAGConfig:
             # -------------------------
             # 분쟁조정사례: mediation_cases
             # -------------------------
+            # 실제 데이터에서 related_rules/order_text가 길어지기 쉬움.
+            # "한 케이스가 지나치게 비대해지는 것"을 방지하기 위해 필드별 clip을 기본으로 둠.
             "mediation": DatasetConfig(
                 table_name="mediation_cases",
                 collection_name="mediation_cases",
@@ -193,17 +183,27 @@ def _default_rag_config() -> RAGConfig:
                     "page_end",
                     "title",
                 ],
+                field_max_chars={
+                    "facts": 6000,
+                    "issues": 3000,
+                    "related_rules": 8000,
+                    "related_precedents": 3000,
+                    "result": 2500,
+                    "order_text": 9000,
+                },
             ),
             # -------------------------
             # 법령: law_text
             # -------------------------
+            # row가 조문 단위로 이미 잘게 분리되어 있어 text는 길지 않은 편.
+            # source_name은 모든 row에서 반복될 가능성이 높아 "텍스트 유사도"를 불필요하게 끌어올릴 수 있어
+            # 본문(text_fields)에서는 제외하고 메타로만 유지(검색은 title/text 중심).
             "law": DatasetConfig(
                 table_name="law_text",
                 collection_name="housing_lease_law",
                 text_fields=[
-                    "source_name",  # 법령명
-                    "title",  # 조문 범위/제목
-                    "text",  # 본문
+                    "title",  # 제X조(…)
+                    "text",  # 조문 본문
                 ],
                 metadata_fields=[
                     "id",
@@ -214,6 +214,9 @@ def _default_rag_config() -> RAGConfig:
                     "page_end",
                     "title",
                 ],
+                field_max_chars={
+                    "text": 6000,
+                },
             ),
             # -------------------------
             # 판례: precedents (기본: headnote)

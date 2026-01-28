@@ -111,3 +111,46 @@ def run_layered_rag(
         precedent_fulltext=prec_map,
         precedent_evidence=ev_map_final,
     )
+
+
+if __name__ == "__main__":
+    clause_text = (
+        "임차인이 2기의 차임을 연체한 경우 임대인이 계약갱신을 거절할 수 있다."
+    )
+    r = run_layered_rag(
+        clause_text,
+        top_k_law=4,
+        top_k_precedent=12,
+        top_k_mediation=4,
+        top_n_evidence_raw=10,
+        top_n_evidence_final=3,
+    )
+
+    print("law_hits:", len(r.law_hits))
+    for h in r.law_hits[:2]:
+        print(
+            "  -",
+            h.doc.metadata.get("doc_id"),
+            h.distance,
+            (h.doc.page_content[:120] + "..."),
+        )
+
+    print("precedent_headnote_hits:", len(r.precedent_headnote_hits))
+    print("precedent_fulltext:", len(r.precedent_fulltext))
+
+    # evidence가 실제로 뽑혔는지
+    ev_total = sum(len(v) for v in r.precedent_evidence.values())
+    print("precedent_evidence_total:", ev_total)
+    for pid, spans in list(r.precedent_evidence.items())[:2]:
+        print("  - pid:", pid, "spans:", len(spans))
+        for s in spans[:1]:
+            print("    *", s.adjusted_score, (s.span.text[:200] + "..."))
+
+    print("mediation_hits:", len(r.mediation_hits))
+    for h in r.mediation_hits[:2]:
+        print(
+            "  -",
+            h.doc.metadata.get("doc_id"),
+            h.distance,
+            (h.doc.page_content[:120] + "..."),
+        )

@@ -7,8 +7,12 @@ import com.homematch.domain.user.UserRepository;
 import com.homematch.global.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
+
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Map;
@@ -96,6 +100,41 @@ public class ChatbotController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("{\"error\": \"서버 오류가 발생했습니다: " + e.getMessage() + "\"}");
         }
+    }
+
+    /** 스트리밍 메시지 전송: SSE로 청크 단위 응답. 완료 시 봇 메시지 DB 저장. */
+    @PostMapping(value = "/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<Flux<ServerSentEvent<String>>> sendMessageStream(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody ChatbotMessageRequest request) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+        String token = authHeader.replace("Bearer ", "").trim();
+        if (token.isEmpty() || (request.getText() == null || request.getText().trim().isEmpty())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+        Integer userNo;
+        try {
+            userNo = getUserIdFromToken(token);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+
+        Flux<String> flux = chatbotService.streamResponse(userNo, request);
+        StringBuilder acc = new StringBuilder();
+        Flux<String> withFinal = flux
+                .doOnNext(acc::append)
+                .concatWith(Flux.defer(() -> {
+                    String normalized = chatbotService.normalizeResponseTextForDisplay(acc.toString());
+                    chatbotService.appendBotMessage(userNo, normalized);
+                    return Flux.just("[FINAL]\n" + normalized);
+                }));
+        Flux<ServerSentEvent<String>> sseFlux = withFinal.map(chunk -> ServerSentEvent.builder(chunk).build());
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .body(sseFlux);
     }
 
     // 메시지 히스토리 조회
