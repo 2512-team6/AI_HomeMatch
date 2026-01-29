@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,9 +57,27 @@ public class ChatbotService {
     /** 가이드 컨텍스트 최대 문자 수 (토큰·비용 관리) */
     private static final int DEFAULT_MAX_GUIDE_CHARS = 12_000;
 
+    /** topic별 RAG에서 항상 포함할 핵심 섹션 키 (빠지면 답 품질 저하 방지) */
+    private static final Map<String, List<String>> MUST_INCLUDE_SECTIONS_BY_TOPIC = Map.of(
+            "moveout", List.of("moving_schedule", "timeline_guide", "checklist", "deposit_management"),
+            "residency", List.of("contract_period", "housing_cost", "entry_status", "defect_issues"),
+            "contract_review", List.of("review", "deed_analysis"),
+            "deed_analysis", List.of("deed_analysis", "review")
+    );
+
+    /** Retrieval 시 동의어 확장 (관련 섹션 누락 방지) */
+    private static final Map<String, List<String>> RETRIEVAL_SYNONYMS = Map.of(
+            "이사", List.of("이삿짐", "이사 업체", "일정", "언제", "몇일", "몇 일"),
+            "퇴실", List.of("이사", "체크리스트", "일정", "보증금", "원상복구"),
+            "보증금", List.of("반환", "돌려받"),
+            "계약", List.of("계약서", "만료", "기간", "갱신"),
+            "입주", List.of("입주 상태", "기록", "사진"),
+            "주거비", List.of("월세", "관리비", "공과금")
+    );
+
     /**
      * 가이드 데이터를 문자열로 변환 (LLM 컨텍스트용).
-     * topic 있으면 해당 섹션만, userMessage 있으면 관련 구간 우선 포함, maxChars > 0 이면 잘라냄.
+     * topic 있으면 해당 섹션만, userMessage 있으면 관련 구간 + topic별 필수 섹션 병합, maxChars > 0 이면 잘라냄.
      */
     private String getGuideContextAsString(String topic, String userMessage, int maxChars) {
         JsonNode guides = loadGuideData();
@@ -66,8 +85,9 @@ public class ChatbotService {
             return "가이드 데이터를 불러올 수 없습니다.";
         }
         JsonNode target = guides;
-        if (topic != null && !topic.isBlank()) {
-            switch (topic.trim().toLowerCase()) {
+        String topicKey = (topic != null && !topic.isBlank()) ? topic.trim().toLowerCase() : null;
+        if (topicKey != null) {
+            switch (topicKey) {
                 case "contract_review" -> target = guides.has("contract_guide") ? guides.get("contract_guide") : guides;
                 case "deed_analysis" -> target = guides.has("contract_guide") ? guides.get("contract_guide") : guides;
                 case "residency" -> target = guides.has("residency_management") ? guides.get("residency_management") : guides;
@@ -76,16 +96,13 @@ public class ChatbotService {
             }
         }
         if (userMessage != null && !userMessage.isBlank() && target.isObject()) {
-            Set<String> tokens = Stream.of(userMessage.replaceAll("\\s+", " ").trim().split(" "))
-                    .map(String::trim)
-                    .filter(s -> s.length() >= 2)
-                    .collect(Collectors.toSet());
-            if (!tokens.isEmpty()) {
-                JsonNode reduced = reduceGuideByRelevance(target, tokens);
-                if (reduced != null) {
-                    target = reduced;
-                }
-            }
+            Set<String> tokens = expandTokensForRetrieval(
+                    Stream.of(userMessage.replaceAll("\\s+", " ").trim().split(" "))
+                            .map(String::trim)
+                            .filter(s -> s.length() >= 2)
+                            .collect(Collectors.toCollection(LinkedHashSet::new)));
+            JsonNode reduced = reduceGuideByRelevance(target, tokens);
+            target = mergeWithMustIncludeSections(target, reduced, topicKey);
         }
         String out;
         try {
@@ -99,9 +116,46 @@ public class ChatbotService {
         return out;
     }
 
-    /** userMessage 토큰과 겹치는 필드만 남긴 서브트리. 없으면 null(전체 유지) */
+    /** 동의어 확장된 토큰 집합 반환 (RAG 검색률 향상) */
+    private Set<String> expandTokensForRetrieval(Set<String> tokens) {
+        if (tokens == null || tokens.isEmpty()) return tokens;
+        Set<String> expanded = new LinkedHashSet<>(tokens);
+        for (String t : tokens) {
+            for (var e : RETRIEVAL_SYNONYMS.entrySet()) {
+                if (t.contains(e.getKey()) || e.getKey().contains(t)) {
+                    expanded.addAll(e.getValue());
+                }
+            }
+        }
+        return expanded;
+    }
+
+    /** relevance로 줄인 결과에 topic별 필수 섹션을 병합. 필수 섹션이 빠지지 않도록 보장 */
+    private JsonNode mergeWithMustIncludeSections(JsonNode fullTarget, JsonNode reduced, String topicKey) {
+        if (!fullTarget.isObject()) return fullTarget;
+        List<String> mustInclude = topicKey != null ? MUST_INCLUDE_SECTIONS_BY_TOPIC.get(topicKey) : null;
+        if (mustInclude == null || mustInclude.isEmpty()) {
+            return reduced != null ? reduced : fullTarget;
+        }
+        try {
+            var out = objectMapper.createObjectNode();
+            if (reduced != null && reduced.isObject()) {
+                reduced.fields().forEachRemaining(e -> out.set(e.getKey(), e.getValue()));
+            }
+            for (String key : mustInclude) {
+                if (fullTarget.has(key) && !out.has(key)) {
+                    out.set(key, fullTarget.get(key));
+                }
+            }
+            return out.size() > 0 ? out : fullTarget;
+        } catch (Exception ex) {
+            return reduced != null ? reduced : fullTarget;
+        }
+    }
+
+    /** userMessage 토큰(동의어 확장 포함)과 겹치는 필드만 남긴 서브트리. 없으면 null(전체 유지) */
     private JsonNode reduceGuideByRelevance(JsonNode node, Set<String> tokens) {
-        if (!node.isObject()) return null;
+        if (!node.isObject() || tokens == null || tokens.isEmpty()) return null;
         List<String> keep = new ArrayList<>();
         for (var it = node.fields(); it.hasNext(); ) {
             var e = it.next();
@@ -181,6 +235,10 @@ public class ChatbotService {
         if (node.isObject()) {
             if (node.has("title")) sb.append(node.get("title").asText()).append("\n\n");
             if (node.has("description")) sb.append(node.get("description").asText()).append("\n\n");
+            if (node.has("key_answer") && !node.get("key_answer").asText().isBlank())
+                sb.append(node.get("key_answer").asText()).append("\n\n");
+            if (node.has("summary") && !node.get("summary").asText().isBlank())
+                sb.append(node.get("summary").asText()).append("\n\n");
             if (node.has("features") && node.get("features").isArray()) {
                 for (JsonNode f : node.get("features")) sb.append("· ").append(f.asText()).append("\n");
                 sb.append("\n");

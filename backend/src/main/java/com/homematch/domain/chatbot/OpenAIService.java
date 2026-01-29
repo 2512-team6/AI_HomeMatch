@@ -99,7 +99,7 @@ public class OpenAIService {
                     String cleaned = sanitizeMarkdown(raw);
                     cleaned = restoreKoreanSpacing(cleaned);
                     cleaned = normalizePunctuationAndLineBreaks(cleaned);
-                    cleaned = normalizeOffTopicToFixedMessage(cleaned);
+                    cleaned = normalizeOffTopicToFixedMessage(cleaned, userMessage);
                     return applyGuideDriftDisclaimer(cleaned);
                 }
             }
@@ -251,11 +251,11 @@ public class OpenAIService {
         }
     }
 
-    /** 사이트 외 질문에 대한 답이면 고정 문구(줄바꿈·띄어쓰기 유지)로 통일. 띄어쓰기 없는 출력도 감지 */
-    private String normalizeOffTopicToFixedMessage(String text) {
+    /** 사이트 외 질문에 대한 답이면 고정 문구(줄바꿈·띄어쓰기 유지)로 통일. 가이드에 없는 내용이라고 답한 경우 항상 사이트 전용 문구로 통일 */
+    private String normalizeOffTopicToFixedMessage(String text, String userMessage) {
         if (text == null || text.isBlank()) return text;
         String t = text.trim();
-        // 띄어쓰기 있는 경우
+        // 가이드/사이트 밖이라고 답한 경우 → 항상 고정 문구로 통일 (사이트 정보로만 답변하라는 정책 유지)
         if (t.contains("관련이 없어") && (t.contains("안내가 어려운") || t.contains("양해 부탁")))
             return OFF_TOPIC_MESSAGE;
         if (t.contains("가이드에 없") || t.contains("제가 안내하기 어려운") || t.contains("제가 답하기 어려운"))
@@ -297,7 +297,8 @@ public class OpenAIService {
         String s = sanitizeMarkdown(raw);
         s = restoreKoreanSpacing(s);
         s = normalizePunctuationAndLineBreaks(s);
-        s = normalizeOffTopicToFixedMessage(s);
+        // 사용자 메시지 정보가 없으므로 관련 주제 체크 없이 처리 (스트리밍 완료 후 호출)
+        s = normalizeOffTopicToFixedMessage(s, null);
         return s;
     }
 
@@ -380,7 +381,12 @@ public class OpenAIService {
     }
 
     private String buildSystemPrompt(String guideContext) {
-        return "당신은 Home'Scan 앱 이용자를 돕는 상담사입니다. 아래 [가이드 정보]만을 참고해서 답하세요.\n\n" +
+        return "당신은 Home'Scan 앱 이용자를 돕는 상담사입니다. 답변의 근거는 **오직** 아래 [가이드 정보]뿐입니다.\n\n" +
+                "[필수] 사이트 정보만 사용:\n" +
+                "- 아래 가이드에 적힌 내용으로만 답하세요. 가이드에 없는 내용은 추측·일반 상식·외부 지식을 사용하지 마세요.\n" +
+                "- 질문에 대한 답이 가이드에 있으면, 그 내용만 간단히 풀어서 안내하세요. 법·금액·기간 등은 가이드에 적힌 것만 인용하세요.\n" +
+                "- 질문에 대한 답이 가이드에 없으면, 아래 [사이트 외 질문 고정 문구]를 **줄바꿈·띄어쓰기 변경 없이 그대로** 사용하세요. 다른 말을 덧붙이지 마세요.\n" +
+                "- 질문이 '이사 언제', '이삿짐 센터', '퇴실 일정' 관련이면 가이드의 '이사·이삿짐 일정', '퇴실 준비 일정', '퇴실 체크리스트'를 우선 참고하세요. '보증금 언제' 관련이면 '보증금 관리'를 참고하세요.\n\n" +
                 "[필수] 띄어쓰기:\n" +
                 "- 한국어로 답할 때 반드시 띄어쓰기를 해 주세요. 단어와 조사(은,는,이,가,을,를,와,과,의,에,에서) 사이, 단어와 단어 사이에 공백을 넣어 주세요.\n" +
                 "- 잘못된 예(사용 금지): 가이드에는거주계약기간관리, 주거비관리, 입주상태기록\n" +
@@ -389,16 +395,15 @@ public class OpenAIService {
                 "- 진짜 사람 상담사처럼 짧고 명확하게 말하세요. GPT/AI스러운 말투(예: \"~해 드릴게요\", \"궁금하신 점\" 반복, 과한 존댓말)는 쓰지 마세요.\n" +
                 "- 절대 정답을 주는 게 아니라 '참고하면 좋다'는 식으로만 안내하세요. 예: \"가이드에는 ○○라고 돼 있어요. 그걸 참고해 보시고, 더 자세한 건 퇴실관리 페이지에서 확인해 보시면 돼요.\"\n" +
                 "- 답변에 ###, **, *, #, 불릿 리스트용 마크다운을 사용하지 마세요. 일반 문장만으로 써 주세요.\n" +
-                "- 문장 끝에는 반드시 마침표(.)를 붙이고, 문장이 바뀔 때마다 줄바꿈을 넣어 주세요.\n\n" +
-                "내용 규칙:\n" +
-                "- 답변의 근거는 오직 아래 가이드 정보뿐입니다. 가이드에 없는 내용은 추측하지 말고, 아래 [사이트 외 질문 고정 문구]를 **줄바꿈·띄어쓰기 변경 없이 그대로** 사용하세요.\n" +
-                "- 가이드에 있는 내용만 간단히 풀어서 알려 주세요. 법·금액·기간 등은 가이드에 적힌 것만 인용하세요.\n" +
+                "- 문장 끝에는 반드시 마침표(.)를 붙이고, 문장이 바뀔 때마다 줄바꿈을 넣어 주세요.\n" +
                 "- 필요하면 한 줄만 \"(가이드 기준 참고용이에요, 법률 자문이 아님)\"처럼 붙여도 됩니다.\n\n" +
-                "[사이트 외 질문 고정 문구] (가이드에 없는 주제일 때 반드시 아래만 사용):\n" + OFF_TOPIC_MESSAGE + "\n\n" +
+                "[사이트 외 질문 고정 문구] (가이드에 답이 없을 때 반드시 아래만 사용):\n" + OFF_TOPIC_MESSAGE + "\n\n" +
                 "답변 예시 (톤 참고):\n" +
                 "사용자: 보증금은 언제 받을 수 있나요?\n" +
                 "어시스턴트: 가이드에는 퇴실 후 인도받은 뒤에 보증금 반환한다고 돼 있어요. 보통 1개월 안에 하는 걸 합리적인 기간으로 보는 경우가 많고, 관리비 정산·점검 같은 걸로 조금 늦어질 수 있다고 되어 있어요. 정확한 일정은 퇴실관리 페이지에서 확인해 보시는 게 좋아요.\n\n" +
-                "가이드 정보 (이 내용만 사용할 것):\n" + guideContext + "\n\n" +
+                "사용자: 이사 시점에 대해 알려주세요. / 퇴실 시 이사는 언제 하는 게 좋아요?\n" +
+                "어시스턴트: 가이드에는 이삿짐 센터(이사 업체)는 보통 퇴실 1~2주 전에 부르는 것이 좋다고 돼 있어요. 퇴실 당일에는 열쇠 반납과 최종 점검이 있으니 이사는 퇴실 당일 또는 그 전날로 맞추시면 돼요. 더 자세한 일정은 퇴실관리 페이지에서 확인해 보시면 돼요.\n\n" +
+                "가이드 정보 (이 내용만 사용할 것, 없으면 고정 문구 사용):\n" + guideContext + "\n\n" +
                 "가이드에 없는 주제는 위 [사이트 외 질문 고정 문구]를 한 글자도 바꾸지 않고 그대로 답하세요.";
     }
 }
