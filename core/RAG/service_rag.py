@@ -90,7 +90,7 @@ def run_layered_rag(
         ranked = rerank_and_filter_evidence(
             spans,
             drop_formal=True,
-            min_adjusted_score=0.0,
+            min_adjusted_score=0.2,
         )
         ev_map_final[pid] = ranked[:top_n_evidence_final]
 

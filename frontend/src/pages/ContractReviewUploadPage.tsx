@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo } from 'react'
 import { ArrowLeft, FileText, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import SpecialTermsInput from '../components/SpecialTermsInput'
@@ -25,6 +25,35 @@ export default function ContractReviewUploadPage() {
     if (!files.length) return
     setUploadedFiles((prev) => [...prev, ...files])
   }
+
+  // ✅ 버튼 활성화 조건: "파일 OR 특약" 중 하나라도 있으면 활성화
+  const hasSpecialTerm = useMemo(
+    () => specialTerms.some((v) => v.trim().length > 0),
+    [specialTerms]
+  )
+  const isAnalyzeDisabled = uploadedFiles.length === 0 && !hasSpecialTerm
+
+  // ✅ 분석 시작: 여기서는 API 호출하지 않고, detail로 이동만 한다.
+  // (detail에서 스피너/경과시간 + API 호출)
+  const handleStartAnalyze = () => {
+    if (isAnalyzeDisabled) return
+
+    const finalSpecialTerms = specialTerms
+      .map((t) => t.trim())
+      .filter((t) => t !== '')
+
+    const reviewId = Date.now()
+    const startedAt = Date.now()
+
+    navigate(`/contract/review/detail?reviewId=${reviewId}`, {
+      state: {
+        reviewId,
+        startedAt,
+        specialTerms: finalSpecialTerms,
+      },
+    })
+  }
+
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -61,9 +90,8 @@ export default function ContractReviewUploadPage() {
                 setIsDragging(false)
                 addFiles(Array.from(e.dataTransfer.files || []))
               }}
-              className={`rounded-2xl border-2 border-dashed p-6 sm:p-6 text-center cursor-pointer transition-colors ${
-                isDragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-500'
-              }`}
+              className={`rounded-2xl border-2 border-dashed p-6 sm:p-6 text-center cursor-pointer transition-colors ${isDragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-500'
+                }`}
             >
               <Upload className="w-8 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-900 font-semibold mb-1">파일을 끌어다 놓거나 선택하세요</p>
@@ -144,16 +172,8 @@ export default function ContractReviewUploadPage() {
         </div>
 
         <button
-          onClick={() => {
-            // 빈 문자열은 저장/전송 대상에서 제외
-            const finalSpecialTerms = specialTerms.filter((t) => t.trim() !== '')
-            // TODO: 실제 분석 API 연동 시, 생성된 reviewId로 이동
-            const simulatedReviewId = Date.now()
-            navigate(`/contract/review/detail?reviewId=${simulatedReviewId}`, {
-              state: { specialTerms: finalSpecialTerms },
-            })
-          }}
-          disabled={uploadedFiles.length === 0}
+          onClick={handleStartAnalyze}
+          disabled={isAnalyzeDisabled}
           className="mt-6 w-full rounded-xl bg-primary-600 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
         >
           분석 시작하기

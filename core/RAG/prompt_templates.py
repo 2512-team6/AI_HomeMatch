@@ -16,35 +16,53 @@ Return ONLY a valid JSON object (no markdown, no code fences, no extra text).
 JSON keys are fixed in English. All natural-language string VALUES must be written in Korean.
 
 {
-  "conclusion": "string (one sentence, Korean)",
-  "risk_points": ["string", "string", "string"],
-  "law_basis": [
-    { "text": "string (Korean)", "source_id": "LAW:<doc_id>" }
+  "level": "SAFE | NEED_UNDERSTAND | NEED_REVIEW | NEED_FIX",
+  "color": "green | yellow | orange | red",
+
+  "conclusion": "string (Korean, 1-2 sentences, easy for general adults)",
+
+  "risk_points": ["string"],
+
+  "mediation_cases": [
+    { "summary": "string (Korean)", "source_id": "MED:<doc_id>" }
   ],
-  "precedent_basis": [
+  "mediation_case_ids": ["MED:<doc_id>"],
+
+  "precedents": [
     {
-      "why_important": "string (Korean, 1-2 sentences)",
+      "summary": "string (Korean)",
       "source_id": "PREC:<precedent_id>",
-      "evidence": ["string (Korean)"]
+      "evidence_paragraphs": ["string (Korean)"]
     }
   ],
-  "mediation_cases": [
-    { "text": "string (Korean)", "source_id": "MED:<doc_id>" }
+  "precedent_ids": ["PREC:<precedent_id>"],
+
+  "laws": [
+    { "summary": "string (Korean)", "source_id": "LAW:<doc_id>" }
   ],
-  "recommended_clauses": ["string (Korean)"]
+  "law_ids": ["LAW:<doc_id>"],
+
+  "recommendations": ["string (Korean)"]
 }
 
 Rules:
 - JSON must be parseable by json.loads.
-- If you cannot find supporting sources in the provided context, use empty arrays [].
+- If you cannot find supporting sources in the provided context, use empty arrays [] for that section.
 - Do NOT invent any source_id. source_id must exist in the context block exactly.
-- precedent_basis.evidence must come from [PRECEDENT_EVIDENCE] only. If missing, precedent_basis=[]
-- Counts:
-  - risk_points: exactly 3 items (max 4 only if necessary).
-  - law_basis: 0~3 items.
-  - precedent_basis: 0~2 items.
-  - mediation_cases: 0~2 items.
-  - recommended_clauses: 1~3 items.
+- precedents[].evidence_paragraphs must come from [PRECEDENT_EVIDENCE] only. If missing, precedents=[]
+- Limits:
+  - risk_points: 0~3 items.
+  - mediation_cases: 0~2 items, mediation_case_ids must match them.
+  - precedents: 0~2 items, precedent_ids must match them.
+  - laws: 0~3 items, law_ids must match them.
+  - recommendations:
+    - If level is SAFE or NEED_UNDERSTAND: recommendations MUST be [].
+    - If level is NEED_REVIEW or NEED_FIX: 0~2 items.
+- Level guidance:
+  - SAFE: No strong legal dispute risk detected OR evidence is insufficient; focus on plain explanation.
+  - NEED_UNDERSTAND: Might confuse a tenant/landlord; mediation evidence may exist; laws/precedents not required.
+  - NEED_REVIEW: If relevant evidence exists across layers, include mediation/precedents/laws as available.
+  - NEED_FIX: If evidence exists and clause is likely unfair/risky, include all available layers and give up to 2 recommendations.
 """
 
 
@@ -62,12 +80,7 @@ SYSTEM_PROMPT = """\
 1) 모르는 내용은 모른다고 말하고, 추측으로 단정하지 않는다.
 2) 근거가 있는 내용만 말한다. 근거가 부족하면 "추가 확인 질문"으로 돌린다.
 3) 반드시 제공된 컨텍스트(법령/판례/조정사례) 안에서만 인용/요약한다.
-3-1) precedent_basis.evidence는 반드시 [PRECEDENT_EVIDENCE]에서만 가져오고, headnote만 보고 근거를 만들지 않는다.
-4) 출력에는 각 항목 끝에 출처 태그를 정확히 1회만 붙인다:
-   - 법령: [LAW:<doc_id>]
-   - 판례: [PREC:<precedent_id>]
-   - 조정사례: [MED:<doc_id>]
-   같은 출처 태그를 같은 섹션에서 반복하지 않는다(중복 금지).
+4) precedent_basis.evidence는 반드시 [PRECEDENT_EVIDENCE]에서만 가져오고, headnote만 보고 근거를 만들지 않는다.
 5) 레이어 순서(법령 → 판례 → 조정사례)를 지켜서 서술한다.
 6) 출력 지시(OUTPUT_FORMAT)의 섹션 구조를 깨지 말 것.
 """
