@@ -1,14 +1,91 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, FileText, Upload } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import SpecialTermsInput from '../components/SpecialTermsInput'
 
 export default function ContractReviewUploadPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [specialTerms, setSpecialTerms] = useState<string[]>([''])
+
+  useEffect(() => {
+    // 동의 페이지에서 돌아온 직후 파일 선택 다이얼로그 자동 오픈
+    const state = location.state as { autoOpenFilePicker?: boolean } | null
+    if (state?.autoOpenFilePicker) {
+      fileInputRef.current?.click()
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
+
+  const ensureDocumentConsent = async (options?: {
+    returnAction?: 'filePicker'
+    alertMessage?: string
+  }) => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      navigate('/login')
+      return false
+    }
+
+    const alertMessage =
+      options?.alertMessage ??
+      '계약서 및 등기부등본 업로드·분석 기능을 이용하려면, 문서 저장 및 분석 처리에 대한 사전 동의가 필요합니다. \n\n동의 페이지로 이동합니다.'
+
+    try {
+      const res = await fetch(
+        `http://localhost:8080/api/consents/required?types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (res.status === 401) {
+        navigate('/login')
+        return false
+      }
+
+      if (!res.ok) {
+        alert(alertMessage)
+        navigate(
+          `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent(
+            'v1.0'
+          )}&context=${encodeURIComponent('contract')}&next=${encodeURIComponent(location.pathname)}${
+            options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+          }`
+        )
+        return false
+      }
+      const data = (await res.json()) as { hasAll: boolean; missingTypes: string[] }
+      if (data.hasAll) return true
+
+      alert(alertMessage)
+      navigate(
+        `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}&context=${encodeURIComponent(
+          'contract'
+        )}&next=${encodeURIComponent(location.pathname)}${
+          options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+        }`
+      )
+      return false
+    } catch {
+      // 네트워크/서버 오류 시에도 안전하게 동의 페이지로 유도
+      alert(alertMessage)
+      navigate(
+        `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}&context=${encodeURIComponent(
+          'contract'
+        )}&next=${encodeURIComponent(location.pathname)}${
+          options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+        }`
+      )
+      return false
+    }
+  }
 
   const formatBytes = (bytes: number) => {
     if (!Number.isFinite(bytes)) return ''
@@ -50,7 +127,12 @@ export default function ContractReviewUploadPage() {
           {/* 업로드 박스 */}
           <div className="lg:col-span-2">
             <div
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                void (async () => {
+                  const ok = await ensureDocumentConsent({ returnAction: 'filePicker' })
+                  if (ok) fileInputRef.current?.click()
+                })()
+              }}
               onDragOver={(e) => {
                 e.preventDefault()
                 setIsDragging(true)
@@ -58,8 +140,12 @@ export default function ContractReviewUploadPage() {
               onDragLeave={() => setIsDragging(false)}
               onDrop={(e) => {
                 e.preventDefault()
-                setIsDragging(false)
-                addFiles(Array.from(e.dataTransfer.files || []))
+                void (async () => {
+                  setIsDragging(false)
+                  const ok = await ensureDocumentConsent({ returnAction: 'filePicker' })
+                  if (!ok) return
+                  addFiles(Array.from(e.dataTransfer.files || []))
+                })()
               }}
               className={`rounded-2xl border-2 border-dashed p-6 sm:p-6 text-center cursor-pointer transition-colors ${
                 isDragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-500'
@@ -145,13 +231,18 @@ export default function ContractReviewUploadPage() {
 
         <button
           onClick={() => {
-            // 빈 문자열은 저장/전송 대상에서 제외
-            const finalSpecialTerms = specialTerms.filter((t) => t.trim() !== '')
-            // TODO: 실제 분석 API 연동 시, 생성된 reviewId로 이동
-            const simulatedReviewId = Date.now()
-            navigate(`/contract/review/detail?reviewId=${simulatedReviewId}`, {
-              state: { specialTerms: finalSpecialTerms },
-            })
+            void (async () => {
+              const ok = await ensureDocumentConsent()
+              if (!ok) return
+
+              // 빈 문자열은 저장/전송 대상에서 제외
+              const finalSpecialTerms = specialTerms.filter((t) => t.trim() !== '')
+              // TODO: 실제 분석 API 연동 시, 생성된 reviewId로 이동
+              const simulatedReviewId = Date.now()
+              navigate(`/contract/review/detail?reviewId=${simulatedReviewId}`, {
+                state: { specialTerms: finalSpecialTerms },
+              })
+            })()
           }}
           disabled={uploadedFiles.length === 0}
           className="mt-6 w-full rounded-xl bg-primary-600 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed"

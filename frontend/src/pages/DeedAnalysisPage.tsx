@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, useRef } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Upload,
   ArrowLeft,
@@ -85,11 +85,87 @@ function StatusBadge({ status }: { status: CheckStatus }) {
 }
 
 export default function DeedAnalysisPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [view, setView] = useState<'upload' | 'result'>('upload')
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [checkResults, setCheckResults] = useState<CheckItem[]>(CHECK_ITEMS)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const state = location.state as { autoOpenFilePicker?: boolean } | null
+    if (view === 'upload' && state?.autoOpenFilePicker) {
+      fileInputRef.current?.click()
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate, view])
+
+  const ensureDocumentConsent = async (options?: {
+    returnAction?: 'filePicker'
+    alertMessage?: string
+  }) => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      navigate('/login')
+      return false
+    }
+
+    const alertMessage =
+      options?.alertMessage ??
+      '계약서 및 등기부등본 업로드·분석 기능을 이용하려면, 문서 저장 및 분석 처리에 대한 사전 동의가 필요합니다. \n\n동의 페이지로 이동합니다.'
+
+    try {
+      const res = await fetch(
+        `http://localhost:8080/api/consents/required?types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (res.status === 401) {
+        navigate('/login')
+        return false
+      }
+
+      if (!res.ok) {
+        alert(alertMessage)
+        navigate(
+          `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent(
+            'v1.0'
+          )}&context=${encodeURIComponent('deed')}&next=${encodeURIComponent(location.pathname)}${
+            options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+          }`
+        )
+        return false
+      }
+      const data = (await res.json()) as { hasAll: boolean; missingTypes: string[] }
+      if (data.hasAll) return true
+
+      alert(alertMessage)
+      navigate(
+        `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}&context=${encodeURIComponent(
+          'deed'
+        )}&next=${encodeURIComponent(location.pathname)}${
+          options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+        }`
+      )
+      return false
+    } catch {
+      alert(alertMessage)
+      navigate(
+        `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}&context=${encodeURIComponent(
+          'deed'
+        )}&next=${encodeURIComponent(location.pathname)}${
+          options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+        }`
+      )
+      return false
+    }
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -140,7 +216,12 @@ export default function DeedAnalysisPage() {
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">등기부등본 이미지 업로드</h2>
             <div
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                void (async () => {
+                  const ok = await ensureDocumentConsent({ returnAction: 'filePicker' })
+                  if (ok) fileInputRef.current?.click()
+                })()
+              }}
               className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-primary-500 hover:bg-gray-50/50 transition-colors"
             >
               <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -189,7 +270,13 @@ export default function DeedAnalysisPage() {
 
             <button
               type="button"
-              onClick={runAnalysis}
+              onClick={() => {
+                void (async () => {
+                  const ok = await ensureDocumentConsent()
+                  if (!ok) return
+                  runAnalysis()
+                })()
+              }}
               disabled={uploadedFiles.length === 0 || isAnalyzing}
               className="mt-6 w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >

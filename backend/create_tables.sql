@@ -286,3 +286,30 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 계약서, 등기부등본 등록 시 동의 테이블 (문서(파일) 처리·저장 동의)
+CREATE TABLE user_consents (
+    consent_id INT AUTO_INCREMENT PRIMARY KEY,   -- 동의 이력 ID
+    user_no INT NOT NULL,                         -- 사용자 번호 (users.user_no FK)
+
+    consent_type VARCHAR(50) NOT NULL,            -- 동의 유형 (TERMS, PRIVACY, DATA_STORE, DISCLAIMER)
+    consent_content TEXT NOT NULL,                -- 동의 문서 내용
+    content_hash CHAR(64) NOT NULL,               -- 동의 문서 변경 여부 확인용 값 (SHA-256)
+
+    version VARCHAR(20) NOT NULL,                 -- 약관/동의 버전
+
+    agreed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- 동의 시점
+    withdrawn_at DATETIME NULL,                   -- 철회 시점 (NULL = 현재 유효)
+
+    CONSTRAINT fk_user_consents_user
+        FOREIGN KEY (user_no)
+        REFERENCES users(user_no)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+/*
+문서 해시 : 이 문서 그대로 동의했는지 확인하기 위한 표시 (없어도 돌아가지만 사고 시 예방)
+철회 시점 (NULL=유효) ⇒ null :  아직 철회 안 함 (현재 유효한 동의)
+ */
+
+
+ 

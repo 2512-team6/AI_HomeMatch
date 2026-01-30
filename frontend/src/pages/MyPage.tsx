@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { User, FileText, Trash2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { User, FileText, Trash2, ShieldCheck } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 interface UserData {
   name: string
@@ -9,11 +9,30 @@ interface UserData {
   phone: string
 }
 
+type ConsentRecord = {
+  consentId: number
+  consentType: string
+  version: string
+  contentHash: string
+  consentContent: string
+  agreedAt: string
+  withdrawnAt: string | null
+}
+
+type ConsentHistoryResponse = {
+  current: ConsentRecord | null
+  history: ConsentRecord[]
+}
+
 export default function MyPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState('profile')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [consentLoading, setConsentLoading] = useState(false)
+  const [consentError, setConsentError] = useState<string | null>(null)
+  const [consentData, setConsentData] = useState<ConsentHistoryResponse | null>(null)
   const [formData, setFormData] = useState<UserData>({
     name: '',
     nickname: '',
@@ -24,6 +43,21 @@ export default function MyPage() {
   useEffect(() => {
     loadUserData()
   }, [])
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (!tab) return
+    if (tab === activeTab) return
+    if (tab === 'profile' || tab === 'documents' || tab === 'settings') {
+      setActiveTab(tab)
+    }
+  }, [activeTab, searchParams])
+
+  useEffect(() => {
+    if (activeTab !== 'settings') return
+    void loadConsentHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
 
   const loadUserData = async () => {
     try {
@@ -124,16 +158,89 @@ export default function MyPage() {
     }
   }
 
+  const loadConsentHistory = async () => {
+    try {
+      setConsentLoading(true)
+      setConsentError(null)
+      const token = localStorage.getItem('accessToken')
+      if (!token) {
+        navigate('/login')
+        return
+      }
+
+      const res = await fetch('http://localhost:8080/api/consents/me?type=DATA_STORE&version=v1.0', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (res.status === 401) {
+        navigate('/login')
+        return
+      }
+
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt || `동의 내역 조회 실패 (HTTP ${res.status})`)
+      }
+
+      const data = (await res.json()) as ConsentHistoryResponse
+      setConsentData(data)
+    } catch (e) {
+      setConsentError(e instanceof Error ? e.message : '동의 내역 조회에 실패했습니다.')
+    } finally {
+      setConsentLoading(false)
+    }
+  }
+
+  const withdrawConsent = async () => {
+    const ok = window.confirm('동의를 철회하면 이후 계약서/등기부등본 업로드 및 분석이 제한됩니다.\n철회하시겠습니까?')
+    if (!ok) return
+
+    try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) {
+        navigate('/login')
+        return
+      }
+
+      const res = await fetch('http://localhost:8080/api/consents/withdraw', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ consentType: 'DATA_STORE', version: 'v1.0' }),
+      })
+
+      if (res.status === 401) {
+        navigate('/login')
+        return
+      }
+
+      if (res.status !== 204) {
+        const txt = await res.text()
+        throw new Error(txt || `동의 철회 실패 (HTTP ${res.status})`)
+      }
+
+      alert('동의가 철회되었습니다. 다음 업로드 시 다시 동의가 필요합니다.')
+      await loadConsentHistory()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '동의 철회에 실패했습니다.')
+    }
+  }
+
   const tabs = [
     { id: 'profile', label: '프로필 관리', icon: User },
     { id: 'documents', label: '데이터 출처 및 면책 안내', icon: FileText },
-    { id: 'settings', label: '문서 삭제/보관 설정', icon: Trash2 },
+    { id: 'settings', label: '문서 보관 및 처리 동의 설정', icon: Trash2 },
   ]
 
   return (
     <div className="flex space-x-6">
       {/* Left Sidebar */}
-      <div className="w-64 bg-white border border-gray-200 rounded-lg p-4 h-fit">
+      <div className="w-72 bg-white border border-gray-200 rounded-lg p-4 h-fit">
         <h2 className="text-lg font-bold text-gray-900 mb-4">설정</h2>
         <nav className="space-y-2">
           {tabs.map((tab) => {
@@ -157,7 +264,7 @@ export default function MyPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 bg-white border border-gray-200 rounded-lg p-6">
+      <div className="flex-1 max-w-4xl bg-white border border-gray-200 rounded-lg p-6">
         {activeTab === 'profile' && (
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">프로필 관리</h2>
@@ -252,14 +359,116 @@ export default function MyPage() {
                   특정 법률 문제에 대해서는 반드시 전문가와 상담하시기 바랍니다.
                 </p>
               </div>
+              <div className="pt-2">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-primary-700 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold text-gray-900 mb-1">문서 저장 및 분석 처리 동의</p>
+                    <p className="text-sm text-gray-600 mb-3">
+                      계약서/등기부등본 업로드 및 분석 기능을 이용하려면 문서(파일) 처리·저장 동의가 필요합니다.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/consents/document?types=DATA_STORE&version=v1.0&context=mypage&next=/mypage?tab=documents')}
+                      className="inline-flex items-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+                    >
+                      동의 관리
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
         {activeTab === 'settings' && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">문서 삭제/보관 설정</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">문서 보관 및 처리 동의 설정</h2>
             <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-primary-700 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="font-bold text-gray-900 mb-1">데이터 저장 동의/보관·삭제 정책 동의</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      업로드된 계약서 및 등기부등본은 분석 목적에 한해 처리·보관됩니다.
+                      서비스 이용을 위해 문서 저장 및 분석 처리 동의가 필요합니다.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate('/consents/document?types=DATA_STORE&version=v1.0&context=settings&next=/mypage?tab=settings')}
+                        className="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        동의 내용 확인
+                      </button>
+                      <button
+                        type="button"
+                        onClick={withdrawConsent}
+                        className="inline-flex items-center rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={!consentData?.current}
+                        title={consentData?.current ? '' : '현재 유효 동의가 없습니다.'}
+                      >
+                        동의 철회
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <h3 className="font-bold text-gray-900 mb-2">동의 내역</h3>
+                {consentLoading ? (
+                  <p className="text-sm text-gray-600">동의 내역을 불러오는 중...</p>
+                ) : consentError ? (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                    {consentError}
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 mb-3">
+                      <p className="text-sm text-gray-800">
+                        <span className="font-semibold">현재 상태:</span>{' '}
+                        {consentData?.current ? (
+                          <>
+                            동의 완료 (버전 {consentData.current.version}) ·{' '}
+                            {new Date(consentData.current.agreedAt).toLocaleString('ko-KR')}
+                          </>
+                        ) : (
+                          <>미동의</>
+                        )}
+                      </p>
+                    </div>
+
+                    {consentData?.history?.length ? (
+                      <div className="space-y-2">
+                        {consentData.history.slice(0, 5).map((c) => (
+                          <details key={c.consentId} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                            <summary className="cursor-pointer text-sm font-semibold text-gray-900">
+                              {c.consentType} · {c.version} · {new Date(c.agreedAt).toLocaleString('ko-KR')}{' '}
+                              {c.withdrawnAt ? (
+                                <span className="ml-2 text-xs font-semibold text-gray-500">(철회됨)</span>
+                              ) : (
+                                <span className="ml-2 text-xs font-semibold text-green-700">(유효)</span>
+                              )}
+                            </summary>
+                            <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-700 leading-relaxed">
+                              {c.consentContent}
+                            </pre>
+                            <div className="mt-2 text-[11px] text-gray-500">hash: {c.contentHash}</div>
+                          </details>
+                        ))}
+                        {consentData.history.length > 5 && (
+                          <p className="text-xs text-gray-500">최근 5건만 표시됩니다.</p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600">동의 이력이 없습니다.</p>
+                    )}
+                  </>
+                )}
+              </div>
+
               <div>
                 <h3 className="font-bold text-gray-900 mb-2">자동 삭제 설정</h3>
                 <select className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg">
