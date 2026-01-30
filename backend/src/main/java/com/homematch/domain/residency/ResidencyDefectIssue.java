@@ -36,6 +36,13 @@ public class ResidencyDefectIssue {
     @Column(nullable = false, length = 20)
     private IssueStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "risk_level", length = 10)
+    private RiskLevel riskLevel;
+
+    @Column(name = "last_notified_at")
+    private LocalDateTime lastNotifiedAt;
+
     @Column(columnDefinition = "TEXT")
     private String memo;
 
@@ -56,10 +63,24 @@ public class ResidencyDefectIssue {
         updatedAt = LocalDateTime.now();
     }
 
+    public void updateRiskLevel(RiskLevel riskLevel) {
+        this.riskLevel = riskLevel;
+    }
+
+    public void updateLastNotifiedAt(LocalDateTime lastNotifiedAt) {
+        this.lastNotifiedAt = lastNotifiedAt;
+    }
+
     public enum IssueStatus {
         RECEIVED,      // 접수 완료
         IN_PROGRESS,   // 처리 중
         COMPLETED,     // 처리 완료
         REJECTED       // 거절
+    }
+
+    public enum RiskLevel {
+        LOW,
+        MEDIUM,
+        HIGH
     }
 }

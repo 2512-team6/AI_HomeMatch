@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Upload, Calendar, Edit2, Plus, X, Image as ImageIcon, Trash2, Info, CheckCircle } from 'lucide-react'
+import { Upload, Calendar, Edit2, Plus, X, Trash2, Info, CheckCircle } from 'lucide-react'
 
 interface HousingCost {
   rent: number // 월세
@@ -105,23 +105,60 @@ export default function ResidencyManagementPage() {
     title: string
     date: string
     status: '처리 중' | '접수 완료' | '처리 완료' | '거절'
+    riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null
+    lastNotifiedAt?: string | null
   }
-  const [defectIssues, setDefectIssues] = useState<DefectIssue[]>([
-    {
-      id: '1',
-      imageUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMiAyMEMyOC42ODYzIDIwIDI2IDIyLjY4NjMgMjYgMjZDMjYgMjkuMzEzNyAyOC42ODYzIDMyIDMyIDMyQzM1LjMxMzcgMzIgMzggMjkuMzEzNyAzOCAyNkMzOCAyMi42ODYzIDM1LjMxMzcgMjAgMzIgMjBaIiBmaWxsPSIjOUI5Q0E0Ii8+Cjwvc3ZnPgo=',
-      title: '침대 프레임 파손',
-      date: '2023-10-26',
-      status: '처리 중'
-    },
-    {
-      id: '2',
-      imageUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMiAyMEMyOC42ODYzIDIwIDI2IDIyLjY4NjMgMjYgMjZDMjYgMjkuMzEzNyAyOC42ODYzIDMyIDMyIDMyQzM1LjMxMzcgMzIgMzggMjkuMzEzNyAzOCAyNkMzOCAyMi42ODYzIDM1LjMxMzcgMjAgMzIgMjBaIiBmaWxsPSIjOUI5Q0E0Ii8+Cjwvc3ZnPgo=',
-      title: '화장실 타일 금',
-      date: '2023-10-20',
-      status: '접수 완료'
-    }
-  ])
+  const [defectIssues, setDefectIssues] = useState<DefectIssue[]>([])
+
+  type TimelineEventType = 'CREATED' | 'NOTIFIED' | 'PROMISED' | 'DELAYED' | 'RE_REQUESTED' | 'COMPLETED'
+  interface IssueTimelineEvent {
+    id: string
+    defectIssueId: string
+    eventType: TimelineEventType
+    note?: string | null
+    createdAt: string
+  }
+
+  type AgreementCounterpart = 'LANDLORD' | 'MANAGER'
+  type AgreementCommunicationType = 'CALL' | 'MESSAGE' | 'VISIT'
+  interface AgreementRecord {
+    id: string
+    defectIssueId?: string | null
+    counterpart: AgreementCounterpart
+    communicationType: AgreementCommunicationType
+    summary: string
+    createdAt: string
+  }
+
+  const [agreementRecords, setAgreementRecords] = useState<AgreementRecord[]>([])
+  const [isAgreementModalOpen, setIsAgreementModalOpen] = useState<boolean>(false)
+  const [agreementCounterpart, setAgreementCounterpart] = useState<AgreementCounterpart>('LANDLORD')
+  const [agreementCommunicationType, setAgreementCommunicationType] = useState<AgreementCommunicationType>('CALL')
+  const [agreementSummary, setAgreementSummary] = useState<string>('')
+  const [agreementLinkedIssueId, setAgreementLinkedIssueId] = useState<string>('') // optional
+  const [alsoCreatePromisedTimeline, setAlsoCreatePromisedTimeline] = useState<boolean>(false)
+
+  const [isIssueDetailModalOpen, setIsIssueDetailModalOpen] = useState<boolean>(false)
+  const [selectedIssue, setSelectedIssue] = useState<DefectIssue | null>(null)
+  const [selectedIssueTimelines, setSelectedIssueTimelines] = useState<IssueTimelineEvent[]>([])
+  const [isTimelinesLoading, setIsTimelinesLoading] = useState<boolean>(false)
+
+  const [timelineActionModal, setTimelineActionModal] = useState<{
+    issueId: string
+    eventType: TimelineEventType
+    title: string
+    note: string
+    date?: string
+    requireDate?: boolean
+  } | null>(null)
+
+  const [riskLevelPickerIssueId, setRiskLevelPickerIssueId] = useState<string | null>(null)
+
+  // UI/UX refactor용(비즈니스 로직 변경 없음): 레이아웃/접힘/모달 상태
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState<boolean>(false)
+  const [isEntryStatusExpanded, setIsEntryStatusExpanded] = useState<boolean>(false)
+  const [isContractPanelOpen, setIsContractPanelOpen] = useState<boolean>(false)
+  const [expandedIssueActionsId, setExpandedIssueActionsId] = useState<string | null>(null)
   
   // 입주 상태 종류 목록 (공간별)
   const entryStatusTypes = [
@@ -245,7 +282,9 @@ export default function ResidencyManagementPage() {
           imageUrl: r.imageUrl,
           title: r.title,
           date: r.issueDate,
-          status: mapStatusToKorean(r.status)
+          status: mapStatusToKorean(r.status),
+          riskLevel: r.riskLevel ?? null,
+          lastNotifiedAt: r.lastNotifiedAt ?? null,
         }))
         setDefectIssues(issues)
       } else if (response.status === 404) {
@@ -255,6 +294,190 @@ export default function ResidencyManagementPage() {
     } catch (error) {
       console.error('거주 중 이슈 기록 불러오기 실패:', error)
     }
+  }
+
+  const loadAgreementRecords = async () => {
+    try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) return
+
+      const response = await fetch('http://localhost:8080/api/residency/agreement-records?limit=10', {
+        headers: getAuthHeaders()
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const records: AgreementRecord[] = data.map((r: any) => ({
+          id: r.id.toString(),
+          defectIssueId: r.defectIssueId != null ? r.defectIssueId.toString() : null,
+          counterpart: r.counterpart,
+          communicationType: r.communicationType,
+          summary: r.summary,
+          createdAt: r.createdAt
+        }))
+        setAgreementRecords(records)
+      }
+    } catch (error) {
+      console.error('연락/합의 기록 불러오기 실패:', error)
+    }
+  }
+
+  const loadTimelinesForIssue = async (issueId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) return
+      setIsTimelinesLoading(true)
+
+      const response = await fetch(`http://localhost:8080/api/residency/defect-issues/${issueId}/timelines`, {
+        headers: getAuthHeaders()
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const timelines: IssueTimelineEvent[] = data.map((t: any) => ({
+          id: t.id.toString(),
+          defectIssueId: t.defectIssueId.toString(),
+          eventType: t.eventType,
+          note: t.note,
+          createdAt: t.createdAt
+        }))
+        setSelectedIssueTimelines(timelines)
+      } else {
+        setSelectedIssueTimelines([])
+      }
+    } catch (error) {
+      console.error('타임라인 불러오기 실패:', error)
+      setSelectedIssueTimelines([])
+    } finally {
+      setIsTimelinesLoading(false)
+    }
+  }
+
+  const createTimelineEvent = async (issueId: string, eventType: TimelineEventType, note: string | null) => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    const response = await fetch(`http://localhost:8080/api/residency/defect-issues/${issueId}/timelines`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        eventType,
+        note: note || null
+      })
+    })
+
+    if (!response.ok) {
+      let msg = '타임라인 기록에 실패했습니다.'
+      try {
+        const err = await response.json()
+        if (err?.error) msg = err.error
+      } catch {}
+      alert(msg)
+      return
+    }
+
+    // NOTIFIED는 lastNotifiedAt이 업데이트되므로 UI도 반영
+    if (eventType === 'NOTIFIED') {
+      const nowIso = new Date().toISOString()
+      setDefectIssues(prev => prev.map(i => (i.id === issueId ? { ...i, lastNotifiedAt: nowIso } : i)))
+      setSelectedIssue(prev => (prev && prev.id === issueId ? { ...prev, lastNotifiedAt: nowIso } : prev))
+    }
+
+    if (isIssueDetailModalOpen && selectedIssue?.id === issueId) {
+      await loadTimelinesForIssue(issueId)
+    }
+  }
+
+  const createAgreementRecord = async () => {
+    if (!agreementSummary.trim()) {
+      alert('요약을 입력해주세요.')
+      return
+    }
+
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    const response = await fetch('http://localhost:8080/api/residency/agreement-records', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        counterpart: agreementCounterpart,
+        communicationType: agreementCommunicationType,
+        summary: agreementSummary.trim(),
+        defectIssueId: agreementLinkedIssueId ? Number(agreementLinkedIssueId) : null
+      })
+    })
+
+    if (!response.ok) {
+      let msg = '연락/합의 기록 저장에 실패했습니다.'
+      try {
+        const err = await response.json()
+        if (err?.error) msg = err.error
+      } catch {}
+      alert(msg)
+      return
+    }
+
+    const data = await response.json()
+    const newRecord: AgreementRecord = {
+      id: data.id.toString(),
+      defectIssueId: data.defectIssueId != null ? data.defectIssueId.toString() : null,
+      counterpart: data.counterpart,
+      communicationType: data.communicationType,
+      summary: data.summary,
+      createdAt: data.createdAt
+    }
+
+    setAgreementRecords(prev => [newRecord, ...prev].slice(0, 10))
+
+    // 옵션: 연결 이슈가 있고 체크되어 있으면 PROMISED 타임라인도 함께 기록
+    if (alsoCreatePromisedTimeline && agreementLinkedIssueId) {
+      await createTimelineEvent(
+        agreementLinkedIssueId,
+        'PROMISED',
+        `[연락/합의 기록 연동]\n${agreementSummary.trim()}`
+      )
+    }
+
+    // 폼 초기화
+    setAgreementSummary('')
+    setAgreementLinkedIssueId('')
+    setAlsoCreatePromisedTimeline(false)
+    setIsAgreementModalOpen(false)
+  }
+
+  const updateIssueRiskLevel = async (issueId: string, riskLevel: 'LOW' | 'MEDIUM' | 'HIGH') => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    const response = await fetch(`http://localhost:8080/api/residency/defect-issues/${issueId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ riskLevel })
+    })
+
+    if (!response.ok) {
+      let msg = '분쟁 위험도 저장에 실패했습니다.'
+      try {
+        const err = await response.json()
+        if (err?.error) msg = err.error
+      } catch {}
+      alert(msg)
+      return
+    }
+
+    setDefectIssues(prev => prev.map(i => (i.id === issueId ? { ...i, riskLevel } : i)))
+    setSelectedIssue(prev => (prev && prev.id === issueId ? { ...prev, riskLevel } : prev))
+    setRiskLevelPickerIssueId(null)
   }
 
   // 상태 매핑 함수
@@ -278,12 +501,63 @@ export default function ResidencyManagementPage() {
     }
   }
 
+  const mapRiskLevelToLabel = (riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null) => {
+    switch (riskLevel) {
+      case 'LOW': return '낮음'
+      case 'MEDIUM': return '보통'
+      case 'HIGH': return '높음'
+      default: return '미설정'
+    }
+  }
+
+  const mapRiskLevelToBadgeClass = (riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null) => {
+    switch (riskLevel) {
+      case 'LOW': return 'bg-green-100 text-green-800 border-green-200'
+      case 'MEDIUM': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'HIGH': return 'bg-red-100 text-red-800 border-red-200'
+      default: return 'bg-gray-100 text-gray-700 border-gray-200'
+    }
+  }
+
+  const mapTimelineEventToKorean = (eventType: TimelineEventType) => {
+    switch (eventType) {
+      case 'CREATED': return '이슈 생성'
+      case 'NOTIFIED': return '임대인 통보'
+      case 'PROMISED': return '수리 약속'
+      case 'DELAYED': return '지연 기록'
+      case 'RE_REQUESTED': return '재요청'
+      case 'COMPLETED': return '처리 완료'
+      default: return eventType
+    }
+  }
+
+  const mapAgreementCounterpartToKorean = (c: AgreementCounterpart) => {
+    return c === 'LANDLORD' ? '임대인' : '관리인'
+  }
+
+  const mapAgreementCommunicationToKorean = (t: AgreementCommunicationType) => {
+    switch (t) {
+      case 'CALL': return '통화'
+      case 'MESSAGE': return '메시지'
+      case 'VISIT': return '방문'
+      default: return t
+    }
+  }
+
+  const formatDateTimeShort = (value: any) => {
+    if (!value) return ''
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return String(value)
+    return d.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  }
+
   // 초기 데이터 로드
   useEffect(() => {
     loadContract()
     loadCostSettings()
     loadMonthlyRecords()
     loadDefectIssues()
+    loadAgreementRecords()
     loadEntryStatusRecords()
   }, [])
 
@@ -562,17 +836,6 @@ export default function ResidencyManagementPage() {
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount) + '원'
-  }
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return ''
-    const date = new Date(dateString)
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long'
-    })
   }
 
   const formatDateShort = (dateString: string) => {
@@ -1001,157 +1264,75 @@ export default function ResidencyManagementPage() {
     setEditingIssueId(null)
   }
 
+  // UI 표시용 파생 값(비즈니스 로직 변경 없음)
+  const inProgressIssueCount = defectIssues.filter(
+    (i) => i.status === '처리 중' || i.status === '접수 완료'
+  ).length
+  const currentMonthLabel = `${new Date().getMonth() + 1}월`
+  const contractDDayText = (() => {
+    if (!savedContractEndDate) return '미등록'
+    const today = new Date()
+    const end = new Date(savedContractEndDate)
+    const daysRemaining = Math.floor((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    if (Number.isNaN(daysRemaining)) return '미등록'
+    if (daysRemaining > 0) return `D-${daysRemaining}`
+    if (daysRemaining === 0) return 'D-DAY'
+    return `D+${Math.abs(daysRemaining)}`
+  })()
+
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">거주 중 관리</h1>
-        <p className="text-gray-600">
-          거주 중 발생하는 하자 관리, 주거비 납부 추적, 퇴실 준비까지 한 번에 관리하세요.
-        </p>
-      </div>
+    <div className="space-y-6">
+      {/* 상단 요약 바 (sticky) */}
+      <div className="sticky top-0 z-40">
+        <div className="bg-white/90 backdrop-blur border border-gray-200 rounded-lg px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-gray-900">거주 중 관리</div>
+              <div className="text-xs text-gray-600 truncate">
+                {savedContractStartDate && savedContractEndDate
+                  ? `${formatDateShort(savedContractStartDate)} ~ ${formatDateShort(savedContractEndDate)}`
+                  : '계약 기간 미등록'}
+              </div>
+            </div>
 
-      {/* Contract Period Registration */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-primary-600" />
-            <h2 className="text-xl font-bold text-gray-900">거주 계약 기간</h2>
+            <div className="flex flex-wrap gap-2">
+              <div className="px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-sm">
+                <span className="text-gray-600">계약</span>{' '}
+                <span className="font-bold text-gray-900">{contractDDayText}</span>
+              </div>
+              <div className="px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-sm">
+                <span className="text-gray-600">이번 달 납부일</span>{' '}
+                <span className="font-bold text-gray-900">{displayCost.paymentDate}일</span>
+              </div>
+              <div className="px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-sm">
+                <span className="text-gray-600">진행 중 이슈</span>{' '}
+                <span className="font-bold text-gray-900">{inProgressIssueCount}건</span>
+              </div>
+            </div>
           </div>
-          {!isEditingDate && (
-            <button
-              onClick={() => {
-                setIsEditingDate(true)
-                setContractStartDate(savedContractStartDate)
-                setContractEndDate(savedContractEndDate)
-              }}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-              {savedContractStartDate ? '수정' : '등록'}
-            </button>
-          )}
         </div>
-
-        {isEditingDate ? (
-          <div className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  계약 시작일 (입주일)
-                </label>
-                <input
-                  type="date"
-                  value={contractStartDate}
-                  onChange={(e) => {
-                    setContractStartDate(e.target.value)
-                    // 시작일이 변경되면 종료일이 시작일보다 이전이면 자동 조정
-                    if (contractEndDate && new Date(contractEndDate) <= new Date(e.target.value)) {
-                      const endDate = new Date(e.target.value)
-                      endDate.setMonth(endDate.getMonth() + 12) // 기본 1년으로 설정
-                      setContractEndDate(endDate.toISOString().split('T')[0])
-                    }
-                  }}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  max={contractEndDate || undefined}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  계약 종료일 (거주 마감일)
-                </label>
-                <input
-                  type="date"
-                  value={contractEndDate}
-                  onChange={(e) => setContractEndDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  min={contractStartDate || undefined}
-                />
-              </div>
-            </div>
-            {contractStartDate && contractEndDate && (
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600">
-                  계약 기간: <span className="font-medium text-gray-900">
-                    {(() => {
-                      const start = new Date(contractStartDate)
-                      const end = new Date(contractEndDate)
-                      const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
-                      const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-                      return `${months}개월 (${days}일)`
-                    })()}
-                  </span>
-                </div>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={handleDateSave}
-                disabled={!contractStartDate || !contractEndDate}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
-              >
-                저장
-              </button>
-              <button
-                onClick={() => {
-                  setIsEditingDate(false)
-                  setContractStartDate(savedContractStartDate)
-                  setContractEndDate(savedContractEndDate)
-                }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-              >
-                취소
-              </button>
-            </div>
-          </div>
-        ) : savedContractStartDate && savedContractEndDate ? (
-          <div className="p-4 bg-primary-50 border border-primary-200 rounded-lg">
-            <div className="text-sm text-gray-600 mb-2">등록된 계약 기간</div>
-            <div className="text-lg font-bold text-primary-700 mb-2">
-              {formatDateShort(savedContractStartDate)} ~ {formatDateShort(savedContractEndDate)}
-            </div>
-            <div className="text-xs text-gray-500 space-y-1">
-              <div>
-                {(() => {
-                  const start = new Date(savedContractStartDate)
-                  const end = new Date(savedContractEndDate)
-                  const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
-                  const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-                  return `계약 기간: ${months}개월 (${days}일)`
-                })()}
-              </div>
-              <div>
-                {(() => {
-                  const today = new Date()
-                  const end = new Date(savedContractEndDate)
-                  const daysRemaining = Math.floor((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                  if (daysRemaining > 0) {
-                    return `남은 기간: ${daysRemaining}일`
-                  } else if (daysRemaining === 0) {
-                    return `계약 만료일입니다`
-                  } else {
-                    return `계약 만료됨 (${Math.abs(daysRemaining)}일 경과)`
-                  }
-                })()}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center text-gray-500">
-            거주 계약 기간을 등록해주세요
-          </div>
-        )}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Left Column */}
-        <div className="space-y-6">
-          {/* 거주 중 이슈 기록 */}
+      {/* 메인 레이아웃: 70/30 Grid (사이드바 대응) */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
+        {/* 메인 액션 영역 */}
+        <div className="space-y-6 min-w-0">
+          {/* 1) 거주 중 이슈 기록 (가장 강조된 카드) */}
           <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">거주 중 이슈 기록</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              이슈 사진을 업로드하고 AI로 분류하며, 임대인에게 보낼 문서를 자동 생성합니다.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">이슈 기록하기</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  사진 업로드 → 한 줄 메모 → 기록하기
+                </p>
+              </div>
+              <button
+                onClick={() => setIsAgreementModalOpen(true)}
+                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                연락/합의 기록
+              </button>
+            </div>
 
             {/* 파일 업로드 영역 */}
             <div
@@ -1159,20 +1340,21 @@ export default function ResidencyManagementPage() {
               onDragLeave={handleResidencyIssueDragLeave}
               onDrop={handleResidencyIssueDrop}
               onClick={() => residencyIssueFileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors mb-6 ${
+              className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
                 isResidencyIssueDragging
                   ? 'border-primary-500 bg-primary-50'
                   : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
               }`}
             >
-              <Upload className={`w-12 h-12 mx-auto mb-4 ${
+              <Upload className={`w-12 h-12 mx-auto mb-3 ${
                 isResidencyIssueDragging ? 'text-primary-600' : 'text-gray-400'
               }`} />
-              <p className={`text-gray-600 ${isResidencyIssueDragging ? 'text-primary-600 font-medium' : ''}`}>
+              <p className={`text-sm ${isResidencyIssueDragging ? 'text-primary-600 font-medium' : 'text-gray-600'}`}>
                 {isResidencyIssueDragging
                   ? '여기에 파일을 놓아주세요'
                   : '사진을 드래그하거나 클릭하여 업로드'}
               </p>
+              <p className="text-xs text-gray-400 mt-1">이미지 파일만 업로드 가능</p>
             </div>
 
             <input
@@ -1183,14 +1365,14 @@ export default function ResidencyManagementPage() {
               className="hidden"
             />
 
-            {/* 한줄 메모와 기록하기 버튼 */}
-            <div className="flex gap-2 mb-6">
+            {/* 한줄 메모 + CTA */}
+            <div className="mt-5 flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={residencyIssueMemo}
                 onChange={(e) => setResidencyIssueMemo(e.target.value)}
-                placeholder="이슈에 대한 간단한 메모를 입력하세요"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                placeholder="예) 욕실 실리콘 곰팡이 / 창문 틈새 바람"
+                className="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
               <button
                 onClick={handleResidencyIssueSaveOnly}
@@ -1200,77 +1382,377 @@ export default function ResidencyManagementPage() {
                 기록하기
               </button>
             </div>
+          </div>
 
-            {/* 최근 이슈 접수 내역 */}
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">최근 이슈 접수 내역</h2>
-              {defectIssues.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 text-sm">
-                  등록된 이슈가 없습니다.
-                </div>
-              ) : (
-                <div className="space-y-4 mb-4">
-                  {defectIssues.map((issue) => {
-                    const statusColors = {
-                      '처리 중': 'bg-yellow-100 text-yellow-800',
-                      '접수 완료': 'bg-blue-100 text-blue-800',
-                      '처리 완료': 'bg-green-100 text-green-800',
-                      '거절': 'bg-red-100 text-red-800'
-                    }
+          {/* 2) 최근 이슈 목록 */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">최근 이슈</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  핵심 액션만 노출하고, 나머지는 “더보기”로 정리했어요.
+                </p>
+              </div>
+              <div className="text-sm text-gray-600">
+                진행 중 <span className="font-bold text-gray-900">{inProgressIssueCount}</span>건
+              </div>
+            </div>
 
-                    return (
-                      <div key={issue.id} className="flex items-center space-x-4 p-3 border border-gray-200 rounded-lg">
+            {defectIssues.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 text-sm">
+                등록된 이슈가 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {defectIssues.map((issue) => {
+                  const statusColors = {
+                    '처리 중': 'bg-yellow-100 text-yellow-800',
+                    '접수 완료': 'bg-blue-100 text-blue-800',
+                    '처리 완료': 'bg-green-100 text-green-800',
+                    '거절': 'bg-red-100 text-red-800'
+                  }
+
+                  const isExpanded = expandedIssueActionsId === issue.id
+
+                  return (
+                    <div key={issue.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-start gap-4">
                         <img
                           src={issue.imageUrl}
                           alt={issue.title}
-                          className="w-16 h-16 object-cover rounded"
+                          className="w-16 h-16 object-cover rounded border border-gray-200 flex-shrink-0"
                         />
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">{issue.title}</div>
-                          <div className="text-sm text-gray-600">{issue.date}</div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="font-medium text-gray-900 truncate">{issue.title}</div>
+                            <button
+                              type="button"
+                              onClick={() => setRiskLevelPickerIssueId(issue.id)}
+                              className={`px-2 py-0.5 rounded border text-xs font-medium ${mapRiskLevelToBadgeClass(issue.riskLevel)}`}
+                              title="분쟁 위험도 설정"
+                            >
+                              위험도: {mapRiskLevelToLabel(issue.riskLevel)}
+                            </button>
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">{issue.date}</div>
+                          {issue.lastNotifiedAt && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              마지막 통보: {formatDateTimeShort(issue.lastNotifiedAt)}
+                            </div>
+                          )}
+
+                          {/* 주요 액션 (항상 노출) */}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setSelectedIssue(issue)
+                                setIsIssueDetailModalOpen(true)
+                                await loadTimelinesForIssue(issue.id)
+                              }}
+                              className="px-3 py-1.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                            >
+                              타임라인
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await createTimelineEvent(issue.id, 'NOTIFIED', null)
+                              }}
+                              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            >
+                              임대인 통보
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedIssueActionsId((prev) => (prev === issue.id ? null : issue.id))}
+                              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                            >
+                              {isExpanded ? '닫기' : '더보기'}
+                            </button>
+                          </div>
+
+                          {/* 보조 액션 (더보기에서만) */}
+                          {isExpanded && (
+                            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTimelineActionModal({
+                                      issueId: issue.id,
+                                      eventType: 'PROMISED',
+                                      title: '약속 기록',
+                                      note: '',
+                                      date: new Date().toISOString().split('T')[0],
+                                      requireDate: true
+                                    })
+                                  }}
+                                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                                >
+                                  약속 기록
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTimelineActionModal({
+                                      issueId: issue.id,
+                                      eventType: 'DELAYED',
+                                      title: '지연 기록',
+                                      note: ''
+                                    })
+                                  }}
+                                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                                >
+                                  지연
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTimelineActionModal({
+                                      issueId: issue.id,
+                                      eventType: 'RE_REQUESTED',
+                                      title: '재요청 기록',
+                                      note: ''
+                                    })
+                                  }}
+                                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                                >
+                                  재요청
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditIssue(issue)}
+                                  className="px-3 py-1.5 text-sm bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-1"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                  수정
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[issue.status]}`}>
-                          {issue.status}
-                        </span>
-                        <button
-                          onClick={() => handleEditIssue(issue)}
-                          className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                          수정
-                        </button>
+
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[issue.status]}`}>
+                            {issue.status}
+                          </span>
+                        </div>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
-              <button 
-                onClick={() => {
-                  if (defectIssues.length > 0) {
-                    alert('임대인 요청 문서 생성 기능은 준비 중입니다.')
-                  } else {
-                    alert('등록된 이슈가 없습니다.')
-                  }
-                }}
-                className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
-              >
-                임대인 요청 문서 생성
-              </button>
-            </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                if (defectIssues.length > 0) {
+                  alert('임대인 요청 문서 생성 기능은 준비 중입니다.')
+                } else {
+                  alert('등록된 이슈가 없습니다.')
+                }
+              }}
+              className="mt-4 w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
+            >
+              임대인 요청 문서 생성
+            </button>
           </div>
 
+          {/* [A-2] 연락/합의 기록 (메인에 두되, 밀도는 낮게) */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-bold text-gray-900">최근 연락/합의 기록</h2>
+              <button
+                onClick={() => setIsAgreementModalOpen(true)}
+                className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                기록 추가
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              최근 10개만 표시됩니다. 필요하면 “기록 추가”로 바로 남겨주세요.
+            </p>
 
+            {agreementRecords.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-sm">
+                아직 연락/합의 기록이 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {agreementRecords.slice(0, 10).map((r) => (
+                  <div key={r.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-gray-900">
+                      {mapAgreementCounterpartToKorean(r.counterpart)} · {mapAgreementCommunicationToKorean(r.communicationType)}
+                      {r.defectIssueId ? (
+                        <span className="text-gray-500 font-normal"> · 이슈 #{r.defectIssueId}</span>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatDateTimeShort(r.createdAt)}
+                    </div>
+                    <div className="mt-3 text-sm text-gray-700 whitespace-pre-wrap">
+                      {r.summary}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
+          {/* 3) 입주 상태 기록 (기본 접힘: Accordion) */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <button
+              type="button"
+              onClick={() => setIsEntryStatusExpanded((v) => !v)}
+              className="w-full flex items-center justify-between gap-3"
+            >
+              <div className="text-left">
+                <div className="text-xl font-bold text-gray-900">입주 상태 기록</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  {entryStatusRecords.length}건 저장됨 · 필요할 때만 펼쳐서 확인/추가하세요
+                </div>
+              </div>
+              <div className="text-sm text-gray-600">
+                {isEntryStatusExpanded ? '접기' : '펼치기'}
+              </div>
+            </button>
+
+            {isEntryStatusExpanded && (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <button
+                    onClick={() => setIsGuideModalOpen(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                  >
+                    <Info className="w-4 h-4" />
+                    촬영 가이드 보기
+                  </button>
+                  <div className="text-xs text-gray-500">
+                    입주 당시 상태를 남기면 퇴실 분쟁 예방에 도움이 됩니다.
+                  </div>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {/* 파일 업로드 */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors min-h-[200px] flex flex-col items-center justify-center ${
+                      isDragging
+                        ? 'border-primary-500 bg-primary-50'
+                        : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Upload className={`w-10 h-10 mx-auto mb-3 ${
+                      isDragging ? 'text-primary-600' : 'text-gray-400'
+                    }`} />
+                    <p className={`text-sm ${isDragging ? 'text-primary-600 font-medium' : 'text-gray-600'}`}>
+                      {isDragging ? '여기에 파일을 놓아주세요' : '사진 업로드'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">드래그 또는 클릭</p>
+                  </div>
+
+                  {entryStatusRecords.map((record) => (
+                    <div
+                      key={record.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow relative"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm('이 기록을 삭제할까요?')) {
+                            handleDeleteEntryStatus(record.id)
+                          }
+                        }}
+                        className="absolute top-2 right-2 p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                        title="삭제"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <img
+                        src={record.imageUrl}
+                        alt={record.type}
+                        className="w-full h-32 object-cover rounded mb-3 border border-gray-200"
+                      />
+                      <div className="font-medium text-gray-900 text-sm mb-1">
+                        {record.type}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        {formatDateShort(record.date)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right Column */}
-        <div className="space-y-6">
-          {/* Calendar */}
+        {/* 보조 정보 패널 (sticky) */}
+        <div className="space-y-6 min-w-0 lg:sticky lg:top-24 self-start">
+          {/* 주거비 요약 (달력은 모달로만) */}
           <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">
-                {new Date().getMonth() + 1}월 주거비 달력
-              </h3>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{currentMonthLabel} 예상 주거비</h3>
+                <div className="text-sm text-gray-600 mt-1">달력은 “달력 보기”로만 열립니다.</div>
+              </div>
+              <button
+                onClick={() => setIsCalendarModalOpen(true)}
+                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                달력 보기
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-700">월세</span>
+                <span className="font-bold">{formatCurrency(displayCost.rent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-700">관리비</span>
+                <span className="font-bold">{formatCurrency(displayCost.maintenance)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-700">전기/수도/가스</span>
+                <span className="font-bold">~{formatCurrency(displayCost.utilities)}</span>
+              </div>
+              <div className="border-t border-gray-200 pt-3 flex justify-between">
+                <span className="font-bold text-gray-900">총 예상 금액</span>
+                <span className="font-bold text-primary-600">
+                  ~{formatCurrency(displayCost.rent + displayCost.maintenance + displayCost.utilities)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <div className="text-xs text-gray-600 mb-1">납부 예정일</div>
+              <div className="text-sm font-medium text-gray-900">
+                매월 {displayCost.paymentDate}일
+              </div>
+              {housingCost.autoRegister && (
+                <div className="text-xs text-primary-600 mt-2 flex items-center gap-1">
+                  <span>✓</span>
+                  <span>자동 등록 활성화됨</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2">
               <button
                 onClick={() => {
                   const currentRecord = getCurrentMonthRecord()
@@ -1287,175 +1769,209 @@ export default function ResidencyManagementPage() {
                   }
                   setIsCostModalOpen(true)
                 }}
+                className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+              >
+                주거비 등록/수정
+              </button>
+              <button
+                onClick={() => setIsHistoryModalOpen(true)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"
+              >
+                지난 주거비 내역 보기
+              </button>
+            </div>
+          </div>
+
+          {/* 계약 기간 설정(접힘) */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <button
+              type="button"
+              onClick={() => setIsContractPanelOpen((v) => !v)}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="text-left">
+                <div className="text-lg font-bold text-gray-900">계약 기간</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  {savedContractStartDate && savedContractEndDate
+                    ? `${formatDateShort(savedContractStartDate)} ~ ${formatDateShort(savedContractEndDate)} · ${contractDDayText}`
+                    : '미등록'}
+                </div>
+              </div>
+              <div className="text-sm text-gray-600">{isContractPanelOpen ? '접기' : '설정'}</div>
+            </button>
+
+            {isContractPanelOpen && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-primary-600" />
+                    <h3 className="text-base font-bold text-gray-900">거주 계약 기간</h3>
+                  </div>
+                  {!isEditingDate && (
+                    <button
+                      onClick={() => {
+                        setIsEditingDate(true)
+                        setContractStartDate(savedContractStartDate)
+                        setContractEndDate(savedContractEndDate)
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      {savedContractStartDate ? '수정' : '등록'}
+                    </button>
+                  )}
+                </div>
+
+                {isEditingDate ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          계약 시작일 (입주일)
+                        </label>
+                        <input
+                          type="date"
+                          value={contractStartDate}
+                          onChange={(e) => {
+                            setContractStartDate(e.target.value)
+                            if (contractEndDate && new Date(contractEndDate) <= new Date(e.target.value)) {
+                              const endDate = new Date(e.target.value)
+                              endDate.setMonth(endDate.getMonth() + 12)
+                              setContractEndDate(endDate.toISOString().split('T')[0])
+                            }
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          max={contractEndDate || undefined}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          계약 종료일 (거주 마감일)
+                        </label>
+                        <input
+                          type="date"
+                          value={contractEndDate}
+                          onChange={(e) => setContractEndDate(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                          min={contractStartDate || undefined}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleDateSave}
+                        disabled={!contractStartDate || !contractEndDate}
+                        className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+                      >
+                        저장
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingDate(false)
+                          setContractStartDate(savedContractStartDate)
+                          setContractEndDate(savedContractEndDate)
+                        }}
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
+                    {savedContractStartDate && savedContractEndDate
+                      ? `${formatDateShort(savedContractStartDate)} ~ ${formatDateShort(savedContractEndDate)}`
+                      : '거주 계약 기간을 등록해주세요.'}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 주거비 달력 모달 (항상 숨김 → 버튼으로만 노출) */}
+      {isCalendarModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">{currentMonthLabel} 주거비 달력</h3>
+              <button
+                onClick={() => setIsCalendarModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-gray-600">
+                납부일(예정): <span className="font-bold text-gray-900">{displayCost.paymentDate}일</span>
+              </div>
+              <button
+                onClick={() => {
+                  const currentRecord = getCurrentMonthRecord()
+                  if (currentRecord) {
+                    setTempCost({
+                      rent: currentRecord.rent,
+                      maintenance: currentRecord.maintenance,
+                      utilities: currentRecord.utilities,
+                      paymentDate: currentRecord.paymentDate,
+                      autoRegister: housingCost.autoRegister
+                    })
+                  } else {
+                    setTempCost(housingCost)
+                  }
+                  setIsCostModalOpen(true)
+                  setIsCalendarModalOpen(false)
+                }}
                 className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 주거비 등록
               </button>
             </div>
-            <div className="grid grid-cols-7 gap-2 mb-4">
+
+            <div className="grid grid-cols-7 gap-2">
               {['월', '화', '수', '목', '금', '토', '일'].map((day) => (
-                <div
-                  key={day}
-                  className="text-center text-sm font-medium text-gray-700 py-2"
-                >
+                <div key={day} className="text-center text-sm font-medium text-gray-700 py-2">
                   {day}
                 </div>
               ))}
               {Array.from({ length: 30 }, (_, i) => i + 1).map((day) => (
-                <div
+                <button
                   key={day}
+                  type="button"
                   onClick={() => {
-                    const currentRecord = getCurrentMonthRecord()
-                    setTempCost({ 
-                      ...housingCost, 
+                    setTempCost({
+                      ...housingCost,
                       paymentDate: day,
                       autoRegister: housingCost.autoRegister
                     })
                     setIsCostModalOpen(true)
+                    setIsCalendarModalOpen(false)
                   }}
-                  className={`text-center py-4 min-h-[48px] rounded cursor-pointer transition-colors ${
+                  className={`text-center py-4 min-h-[48px] rounded transition-colors border ${
                     day === displayCost.paymentDate
-                      ? 'bg-primary-100 text-primary-700 font-bold hover:bg-primary-200'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-primary-100 text-primary-700 font-bold border-primary-200 hover:bg-primary-200'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                   }`}
                 >
-                  {day}
+                  <div>{day}</div>
                   {day === displayCost.paymentDate && (
                     <div className="text-xs mt-1">납부일</div>
                   )}
-                </div>
+                </button>
               ))}
             </div>
-            <p className="text-xs text-gray-600">
-              ● 납부일을 클릭하여 주거비를 등록하거나 수정할 수 있습니다.
+
+            <p className="text-xs text-gray-600 mt-3">
+              ● 날짜를 눌러 납부일을 설정하고 주거비를 등록/수정할 수 있습니다.
             </p>
           </div>
-
-          {/* Estimated Cost */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
-              {new Date().getMonth() + 1}월 예상 주거비
-            </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-700">월세</span>
-                <span className="font-bold">{formatCurrency(displayCost.rent)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-700">관리비</span>
-                <span className="font-bold">{formatCurrency(displayCost.maintenance)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-700">전기/수도/가스</span>
-                <span className="font-bold">~{formatCurrency(displayCost.utilities)}</span>
-              </div>
-              <div className="border-t border-gray-200 pt-3 flex justify-between">
-                <span className="font-bold text-gray-900">
-                  총 예상 금액
-                </span>
-                <span className="font-bold text-primary-600">
-                  ~{formatCurrency(displayCost.rent + displayCost.maintenance + displayCost.utilities)}
-                </span>
-              </div>
-            </div>
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <div className="text-xs text-gray-600 mb-1">납부 예정일</div>
-              <div className="text-sm font-medium text-gray-900">
-                매월 {displayCost.paymentDate}일
-              </div>
-              {housingCost.autoRegister && (
-                <div className="text-xs text-primary-600 mt-2 flex items-center gap-1">
-                  <span>✓</span>
-                  <span>자동 등록 활성화됨</span>
-                </div>
-              )}
-            </div>
-            <button 
-              onClick={() => setIsHistoryModalOpen(true)}
-              className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"
-            >
-              지난 주거비 내역 보기
-            </button>
-          </div>
         </div>
-      </div>
-
-      {/* Entry Status Records */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-bold text-gray-900">
-            입주 상태 기록
-          </h2>
-          <button
-            onClick={() => setIsGuideModalOpen(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
-          >
-            <Info className="w-4 h-4" />
-            촬영 가이드 보기
-          </button>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          입주 당시 집 상태를 기록해 퇴실 시 분쟁을 예방하세요.
-        </p>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-
-        {/* 업로드 영역과 하자 목록 통합 */}
-        <div className="grid md:grid-cols-4 gap-4">
-          {/* 파일 업로드 영역 (맨 왼쪽) */}
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors min-h-[200px] flex flex-col items-center justify-center ${
-              isDragging
-                ? 'border-primary-500 bg-primary-50'
-                : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
-            }`}
-          >
-            <Upload className={`w-10 h-10 mx-auto mb-3 ${
-              isDragging ? 'text-primary-600' : 'text-gray-400'
-            }`} />
-            <p className={`text-sm ${isDragging ? 'text-primary-600 font-medium' : 'text-gray-600'}`}>
-              {isDragging
-                ? '여기에 파일을 놓아주세요'
-                : '사진 업로드'}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              드래그 또는 클릭
-            </p>
-          </div>
-
-          {/* 등록된 입주 상태 기록 목록 */}
-          {entryStatusRecords.map((record) => (
-            <div
-              key={record.id}
-              className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-            >
-              <img
-                src={record.imageUrl}
-                alt={record.type}
-                className="w-full h-32 object-cover rounded mb-3 border border-gray-200"
-              />
-              <div className="font-medium text-gray-900 text-sm mb-1">
-                {record.type}
-              </div>
-              <div className="text-xs text-gray-600">
-                {formatDateShort(record.date)}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* 주거비 등록 모달 */}
       {isCostModalOpen && (
@@ -2128,6 +2644,307 @@ export default function ResidencyManagementPage() {
               >
                 {editingIssueId ? '수정' : '저장'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 이슈 타임라인 상세 모달 (A-1 조회) */}
+      {isIssueDetailModalOpen && selectedIssue && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">이슈 타임라인</h3>
+              <button
+                onClick={() => {
+                  setIsIssueDetailModalOpen(false)
+                  setSelectedIssue(null)
+                  setSelectedIssueTimelines([])
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-bold text-gray-900">{selectedIssue.title}</div>
+                  <div className="text-sm text-gray-600 mt-1">{selectedIssue.date}</div>
+                  {selectedIssue.lastNotifiedAt && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      마지막 통보: {formatDateTimeShort(selectedIssue.lastNotifiedAt)}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setRiskLevelPickerIssueId(selectedIssue.id)}
+                    className={`px-2 py-1 rounded border text-xs font-medium ${mapRiskLevelToBadgeClass(selectedIssue.riskLevel)}`}
+                  >
+                    위험도: {mapRiskLevelToLabel(selectedIssue.riskLevel)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => await createTimelineEvent(selectedIssue.id, 'NOTIFIED', null)}
+                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    임대인 통보
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {isTimelinesLoading ? (
+              <div className="text-center py-10 text-sm text-gray-500">불러오는 중...</div>
+            ) : selectedIssueTimelines.length === 0 ? (
+              <div className="text-center py-10 text-sm text-gray-500">타임라인이 없습니다.</div>
+            ) : (
+              <div className="space-y-3">
+                {selectedIssueTimelines.map((t) => (
+                  <div key={t.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium text-gray-900">
+                        {mapTimelineEventToKorean(t.eventType)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {formatDateTimeShort(t.createdAt)}
+                      </div>
+                    </div>
+                    {t.note ? (
+                      <div className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">
+                        {t.note}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 타임라인 액션 모달 (A-1 수동 기록) */}
+      {timelineActionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">{timelineActionModal.title}</h3>
+              <button
+                onClick={() => setTimelineActionModal(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {timelineActionModal.requireDate && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">약속 날짜</label>
+                <input
+                  type="date"
+                  value={timelineActionModal.date || ''}
+                  onChange={(e) =>
+                    setTimelineActionModal((prev) => prev ? { ...prev, date: e.target.value } : prev)
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                />
+              </div>
+            )}
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                메모
+              </label>
+              <textarea
+                value={timelineActionModal.note}
+                onChange={(e) =>
+                  setTimelineActionModal((prev) => prev ? { ...prev, note: e.target.value } : prev)
+                }
+                rows={4}
+                placeholder="내용을 입력하세요"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTimelineActionModal(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  const { issueId, eventType, note, date, requireDate } = timelineActionModal
+                  if (requireDate && !date) {
+                    alert('날짜를 입력해주세요.')
+                    return
+                  }
+                  if (!note.trim()) {
+                    alert('메모를 입력해주세요.')
+                    return
+                  }
+                  const finalNote =
+                    requireDate
+                      ? `약속일: ${date}\n${note.trim()}`
+                      : note.trim()
+                  await createTimelineEvent(issueId, eventType, finalNote)
+                  setTimelineActionModal(null)
+                }}
+                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 위험도 선택 모달 (A-3) */}
+      {riskLevelPickerIssueId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">분쟁 위험도 설정</h3>
+              <button
+                onClick={() => setRiskLevelPickerIssueId(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={async () => await updateIssueRiskLevel(riskLevelPickerIssueId, 'LOW')}
+                className="w-full px-4 py-2 rounded-lg border border-green-200 bg-green-50 text-green-800 hover:bg-green-100 font-medium"
+              >
+                LOW (낮음)
+              </button>
+              <button
+                onClick={async () => await updateIssueRiskLevel(riskLevelPickerIssueId, 'MEDIUM')}
+                className="w-full px-4 py-2 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 hover:bg-yellow-100 font-medium"
+              >
+                MEDIUM (보통)
+              </button>
+              <button
+                onClick={async () => await updateIssueRiskLevel(riskLevelPickerIssueId, 'HIGH')}
+                className="w-full px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 font-medium"
+              >
+                HIGH (높음)
+              </button>
+            </div>
+            <button
+              onClick={() => setRiskLevelPickerIssueId(null)}
+              className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 연락/합의 기록 모달 (A-2) */}
+      {isAgreementModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">연락/합의 기록</h3>
+              <button
+                onClick={() => setIsAgreementModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">상대방</label>
+                  <select
+                    value={agreementCounterpart}
+                    onChange={(e) => setAgreementCounterpart(e.target.value as AgreementCounterpart)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  >
+                    <option value="LANDLORD">임대인</option>
+                    <option value="MANAGER">관리인</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">연락 방식</label>
+                  <select
+                    value={agreementCommunicationType}
+                    onChange={(e) => setAgreementCommunicationType(e.target.value as AgreementCommunicationType)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  >
+                    <option value="CALL">통화</option>
+                    <option value="MESSAGE">메시지</option>
+                    <option value="VISIT">방문</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">연결 이슈(선택)</label>
+                <select
+                  value={agreementLinkedIssueId}
+                  onChange={(e) => {
+                    setAgreementLinkedIssueId(e.target.value)
+                    if (!e.target.value) setAlsoCreatePromisedTimeline(false)
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                >
+                  <option value="">연결 안 함</option>
+                  {defectIssues.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.title}
+                    </option>
+                  ))}
+                </select>
+                <label className="mt-2 flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={alsoCreatePromisedTimeline}
+                    onChange={(e) => setAlsoCreatePromisedTimeline(e.target.checked)}
+                    disabled={!agreementLinkedIssueId}
+                    className="w-4 h-4"
+                  />
+                  <span className={agreementLinkedIssueId ? '' : 'text-gray-400'}>
+                    (선택) 이 기록을 해당 이슈 타임라인에 ‘약속(PROMISED)’으로도 남기기
+                  </span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  요약 <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={agreementSummary}
+                  onChange={(e) => setAgreementSummary(e.target.value)}
+                  rows={3}
+                  placeholder="핵심 약속/기한/책임 등을 1~3줄로 요약하세요"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setIsAgreementModalOpen(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={createAgreementRecord}
+                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                >
+                  저장
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -15,11 +15,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -55,6 +57,81 @@ public class ChatbotService {
 
     /** 가이드 컨텍스트 최대 문자 수 (토큰·비용 관리) */
     private static final int DEFAULT_MAX_GUIDE_CHARS = 12_000;
+    /** 질문 관련 섹션만 추려 넣을 때 최대 섹션 수 */
+    private static final int MAX_RELEVANT_SECTIONS = 8;
+    /** 띄어쓰기 없는 질문 대비: 2-gram 최대 추가 개수 */
+    private static final int MAX_BIGRAM_TOKENS = 40;
+
+    /** 도메인(사이트 관련) 질문 키워드: 주거/임대차/서비스 사용법 전반 */
+    private static final Pattern IN_SCOPE_KEYWORDS = Pattern.compile(
+            "전세|월세|임대|임차|임대인|임차인|세입자|집주인|보증금|계약|계약서|특약|중개|중개사|" +
+            "등기|등기부|근저당|가압류|권리|소유자|매물|집|방|원룸|오피스텔|아파트|빌라|반지하|" +
+            "입주|퇴실|이사|이삿짐|원상복구|하자|누수|곰팡|결로|악취|냄새|오염|얼룩|변색|벽지|벽|바닥|파손|분쟁|창문|오줌|소변|" +
+            "관리비|공과금|전기|가스|수도|열쇠|주소변경|내용증명|지급명령|" +
+            "로그인|회원가입|비밀번호|계정|마이페이지|페이지|기능|사용법|홈스캔|homesc?an|homematch");
+
+    /** 명확한 도메인 밖(차단) 키워드: 주식/정치/연예/건강 등 */
+    private static final Pattern OUT_OF_SCOPE_KEYWORDS = Pattern.compile(
+            "주식|코인|비트코인|가상화폐|투자|재테크|정치|대선|총선|국회|대통령|" +
+            "연예|아이돌|배우|가수|드라마|영화|스포츠|축구|야구|농구|게임|" +
+            "날씨|기온|미세먼지|요리|레시피|다이어트|운동|헬스|건강|질병|약|병원|연애|" +
+            "메뉴|뭐먹|뭐\\s*먹|추천해|추천\\s*해|잡담|심심");
+
+    /** 사용자의 질문이 Home'Scan 도메인(사이트 관련)인지 판단 */
+    private boolean isInScope(String topic, String userText) {
+        // UI에서 topic이 명시돼서 들어오는 경우(거주/퇴실/계약 등)에는 인스코프로 취급
+        if (topic != null && !topic.isBlank()) return true;
+        if (userText == null || userText.isBlank()) return false;
+
+        String normalized = userText.toLowerCase().replaceAll("\\s+", "");
+        boolean in = IN_SCOPE_KEYWORDS.matcher(normalized).find();
+        boolean out = OUT_OF_SCOPE_KEYWORDS.matcher(normalized).find();
+        if (in) return true;
+        // 명확히 도메인 밖 단어만 있고 인스코프 단서가 없으면 차단
+        if (out && !in) return false;
+        // 애매한 경우는 우선 통과시켜 LLM이 답하도록 (사이트 관련 질문 누락 방지)
+        return true;
+    }
+
+    /** Controller 등 외부에서 인스코프 여부 확인용 */
+    boolean isInScopeForChatbot(String topic, String userText) {
+        return isInScope(topic, userText);
+    }
+
+    /** 고정 문구와 동일한지(공백 무시) 판단 */
+    boolean isOffTopicFinalText(String text) {
+        if (text == null) return false;
+        String a = text.replaceAll("\\s+", "");
+        String b = openAIService.offTopicMessage().replaceAll("\\s+", "");
+        return !a.isBlank() && a.contains(b);
+    }
+
+    /**
+     * 스트리밍 최종이 고정 문구로 끝났을 때, 인스코프라면 비스트리밍으로 한 번 더 생성해 반환.
+     * (사용자 메시지는 이미 streamResponse에서 저장되었으므로 여기서는 저장하지 않음)
+     */
+    String regenerateFinalAnswer(Integer userNo, ChatbotMessageRequest request) {
+        ChatSession session = getOrCreateSession(userNo);
+
+        List<ChatMessage> historyAsc = chatMessageRepository.findBySession_SessionIdOrderByCreatedAtAsc(session.getSessionId());
+        List<Map<String, String>> conversationHistory = new ArrayList<>();
+        int start = Math.max(0, historyAsc.size() - 10);
+        for (int i = start; i < historyAsc.size(); i++) {
+            ChatMessage m = historyAsc.get(i);
+            Map<String, String> entry = new HashMap<>();
+            entry.put("role", m.getRole());
+            entry.put("content", m.getContent());
+            conversationHistory.add(entry);
+        }
+
+        String guideContext = getGuideContextAsString(request.getTopic(), request.getText(), DEFAULT_MAX_GUIDE_CHARS);
+        return openAIService.generateResponse(
+                request.getText(),
+                guideContext,
+                conversationHistory,
+                true
+        );
+    }
 
     /**
      * 가이드 데이터를 문자열로 변환 (LLM 컨텍스트용).
@@ -76,14 +153,17 @@ public class ChatbotService {
             }
         }
         if (userMessage != null && !userMessage.isBlank() && target.isObject()) {
-            Set<String> tokens = Stream.of(userMessage.replaceAll("\\s+", " ").trim().split(" "))
-                    .map(String::trim)
-                    .filter(s -> s.length() >= 2)
-                    .collect(Collectors.toSet());
+            Set<String> tokens = extractTokens(userMessage);
             if (!tokens.isEmpty()) {
                 JsonNode reduced = reduceGuideByRelevance(target, tokens);
                 if (reduced != null) {
                     target = reduced;
+                } else {
+                    // 키워드 매칭이 안 되더라도, 흔한 생활/하자/오염 같은 케이스는 관련 기능 섹션을 우선 주입
+                    JsonNode hinted = selectGuideByHeuristics(topic, guides, userMessage);
+                    if (hinted != null) {
+                        target = hinted;
+                    }
                 }
             }
         }
@@ -99,20 +179,97 @@ public class ChatbotService {
         return out;
     }
 
+    /**
+     * 키워드 기반 휴리스틱 라우팅.
+     * - 질문이 "청소/오염 해결 방법"처럼 가이드에 정확 매칭이 없더라도,
+     *   앱 내에서 할 수 있는 "기록/증거/소통" 기능 섹션을 우선 넣어 LLM이 도움이 되는 답을 하게 유도.
+     *
+     * 반환:
+     * - 선택된 섹션만 담은 ObjectNode (null이면 미적용)
+     */
+    private JsonNode selectGuideByHeuristics(String topic, JsonNode guides, String userMessage) {
+        if (guides == null || userMessage == null) return null;
+        String m = userMessage.replaceAll("\\s+", "").toLowerCase();
+        if (m.isBlank()) return null;
+
+        boolean looksLikeDefectOrDamage =
+                containsAny(m, "하자", "누수", "곰팡", "결로", "파손", "깨졌", "금갔", "오염", "냄새", "악취", "오줌", "소변", "똥", "변", "찌든", "누래", "변색", "얼룩", "벽지", "벽", "바닥");
+        if (!looksLikeDefectOrDamage) return null;
+
+        // topic이 명시된 경우: 그 범위에서만 선택
+        String key = topic == null ? "" : topic.trim().toLowerCase();
+
+        // 1) residency: 거주 중 이슈 기록 + 입주 상태 기록(증거)
+        if ("residency".equals(key) && guides.has("residency_management")) {
+            JsonNode r = guides.get("residency_management");
+            if (r != null && r.isObject()) {
+                var out = objectMapper.createObjectNode();
+                if (r.has("defect_issues")) out.set("defect_issues", r.get("defect_issues"));
+                if (r.has("entry_status")) out.set("entry_status", r.get("entry_status"));
+                return out.size() > 0 ? out : null;
+            }
+        }
+
+        // 2) moveout: 분쟁 예방 + 입주 기록/원상복구 체크리스트
+        if ("moveout".equals(key) && guides.has("moveout_management")) {
+            JsonNode mo = guides.get("moveout_management");
+            if (mo != null && mo.isObject()) {
+                var out = objectMapper.createObjectNode();
+                if (mo.has("dispute_prevention")) out.set("dispute_prevention", mo.get("dispute_prevention"));
+                if (mo.has("entry_records")) out.set("entry_records", mo.get("entry_records"));
+                if (mo.has("restoration_checklist")) out.set("restoration_checklist", mo.get("restoration_checklist"));
+                return out.size() > 0 ? out : null;
+            }
+        }
+
+        // 3) topic이 없거나 기타: 우선 residency 기능(이슈 기록/입주 상태 기록)로 안내하는 게 가장 실무적으로 유용
+        if (guides.has("residency_management")) {
+            JsonNode r = guides.get("residency_management");
+            if (r != null && r.isObject()) {
+                var out = objectMapper.createObjectNode();
+                if (r.has("defect_issues")) out.set("defect_issues", r.get("defect_issues"));
+                if (r.has("entry_status")) out.set("entry_status", r.get("entry_status"));
+                return out.size() > 0 ? out : null;
+            }
+        }
+
+        return null;
+    }
+
+    private boolean containsAny(String haystack, String... needles) {
+        if (haystack == null || haystack.isEmpty() || needles == null) return false;
+        for (String n : needles) {
+            if (n == null || n.isBlank()) continue;
+            if (haystack.contains(n)) return true;
+        }
+        return false;
+    }
+
     /** userMessage 토큰과 겹치는 필드만 남긴 서브트리. 없으면 null(전체 유지) */
     private JsonNode reduceGuideByRelevance(JsonNode node, Set<String> tokens) {
         if (!node.isObject()) return null;
-        List<String> keep = new ArrayList<>();
+        // top-level 섹션별로 score를 계산해서 상위 K개만 포함 (컨텍스트 과대/노이즈 방지)
+        List<Map.Entry<String, Integer>> scored = new ArrayList<>();
         for (var it = node.fields(); it.hasNext(); ) {
             var e = it.next();
-            String valueStr = e.getValue().toString();
-            boolean match = tokens.stream().anyMatch(t -> valueStr.contains(t));
-            if (match) {
-                keep.add(e.getKey());
+            String k = e.getKey();
+            String hay = k + " " + e.getValue().toString();
+            int score = 0;
+            for (String t : tokens) {
+                if (t == null || t.isBlank()) continue;
+                if (hay.contains(t)) score += Math.min(5, t.length());
             }
+            if (score > 0) scored.add(Map.entry(k, score));
         }
-        if (keep.isEmpty()) return null;
-        if (keep.size() == node.size()) return node;
+        if (scored.isEmpty()) return null;
+        if (scored.size() == node.size()) return node;
+
+        scored.sort(Comparator.comparingInt((Map.Entry<String, Integer> e) -> e.getValue()).reversed());
+        List<String> keep = new ArrayList<>();
+        int limit = Math.min(MAX_RELEVANT_SECTIONS, scored.size());
+        for (int i = 0; i < limit; i++) {
+            keep.add(scored.get(i).getKey());
+        }
         try {
             var out = objectMapper.createObjectNode();
             for (String k : keep) {
@@ -122,6 +279,54 @@ public class ChatbotService {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    /** 유사도 매칭용 정규화: 공백/구두점 제거 + 소문자 */
+    private String normalizeForMatch(String text) {
+        if (text == null) return "";
+        String s = text.toLowerCase();
+        // 공백 및 구두점 제거 (간단 유사도 비교용)
+        s = s.replaceAll("[\\s\\p{Punct}]+", "");
+        return s.trim();
+    }
+
+    /**
+     * 간단 토큰화.
+     * - 기본: 공백 기준 2글자 이상 토큰
+     * - 띄어쓰기 없는 질문(예: "퇴실시이사는언제") 대비: bigram(2글자) 토큰을 제한적으로 추가
+     */
+    private Set<String> extractTokens(String text) {
+        if (text == null) return Collections.emptySet();
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        Set<String> tokens = Stream.of(normalized.split(" "))
+                .map(String::trim)
+                .filter(s -> s.length() >= 2)
+                .collect(Collectors.toSet());
+
+        if (tokens.isEmpty()) {
+            String noSpace = normalized.replace(" ", "");
+            if (noSpace.length() >= 2) {
+                int added = 0;
+                for (int i = 0; i < noSpace.length() - 1 && added < MAX_BIGRAM_TOKENS; i++) {
+                    String bi = noSpace.substring(i, i + 2);
+                    if (bi.isBlank()) continue;
+                    if (tokens.add(bi)) added++;
+                }
+            }
+        }
+        return tokens;
+    }
+
+    private int countTokenOverlap(Set<String> a, Set<String> b) {
+        if (a == null || b == null || a.isEmpty() || b.isEmpty()) return 0;
+        int c = 0;
+        // 작은 쪽을 순회
+        Set<String> small = a.size() <= b.size() ? a : b;
+        Set<String> large = a.size() <= b.size() ? b : a;
+        for (String t : small) {
+            if (large.contains(t)) c++;
+        }
+        return c;
     }
 
     /** 추천 질문 목록 반환 (topic: residency, moveout, contract_review, deed_analysis) */
@@ -156,11 +361,45 @@ public class ChatbotService {
         String key = topic == null || topic.isBlank() ? null : topic.trim().toLowerCase();
         if (key == null || !sq.has(key) || !sq.get(key).isArray()) return null;
         String trim = userText.trim();
+        String userNorm = normalizeForMatch(trim);
+        Set<String> userTokens = extractTokens(trim);
+
         String sectionPath = null;
+        int bestScore = 0;
+
         for (JsonNode item : sq.get(key)) {
-            if (item.has("label") && item.get("label").asText().trim().equals(trim) && item.has("section")) {
-                sectionPath = item.get("section").asText();
+            if (!item.has("label") || !item.has("section")) continue;
+            String label = item.get("label").asText("").trim();
+            String sec = item.get("section").asText("").trim();
+            if (label.isBlank() || sec.isBlank()) continue;
+
+            // 1) 완전 일치
+            if (label.equals(trim)) {
+                sectionPath = sec;
+                bestScore = Integer.MAX_VALUE;
                 break;
+            }
+
+            // 2) 정규화 후 포함 관계(강한 매칭)
+            String labelNorm = normalizeForMatch(label);
+            int score = 0;
+            if (!userNorm.isBlank() && !labelNorm.isBlank()) {
+                if (userNorm.equals(labelNorm)) score += 1000;
+                else if (userNorm.contains(labelNorm) || labelNorm.contains(userNorm)) score += 600;
+            }
+
+            // 3) 토큰 겹침(약한 매칭)
+            Set<String> labelTokens = extractTokens(label);
+            int overlap = countTokenOverlap(userTokens, labelTokens);
+            double ratio = labelTokens.isEmpty() ? 0.0 : (double) overlap / (double) labelTokens.size();
+            if (overlap > 0) score += overlap * 50;
+            if (ratio >= 0.6) score += 200;
+
+            // 오탐 방지: 최소 조건
+            boolean ok = score >= 200 || overlap >= 2 || ratio >= 0.6;
+            if (ok && score > bestScore) {
+                bestScore = score;
+                sectionPath = sec;
             }
         }
         if (sectionPath == null || sectionPath.isBlank()) return null;
@@ -306,6 +545,24 @@ public class ChatbotService {
                 .build();
         chatMessageRepository.save(userMsg);
 
+        // 도메인 밖 질문은 서버에서 즉시 차단 (LLM 호출/비용 방지)
+        if (!isInScope(request.getTopic(), request.getText())) {
+            String blocked = openAIService.offTopicMessage();
+            ChatMessage botMsg = ChatMessage.builder()
+                    .session(session)
+                    .role("assistant")
+                    .content(blocked)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            ChatMessage saved = chatMessageRepository.save(botMsg);
+            return ChatbotMessageResponse.builder()
+                    .id(saved.getMessageId().longValue())
+                    .type("bot")
+                    .text(saved.getContent())
+                    .timestamp(saved.getCreatedAt())
+                    .build();
+        }
+
         // 해당 세션의 대화 히스토리 (시간순, 최근 10개만 사용)
         List<ChatMessage> historyAsc = chatMessageRepository.findBySession_SessionIdOrderByCreatedAtAsc(session.getSessionId());
         List<Map<String, String>> conversationHistory = new ArrayList<>();
@@ -344,7 +601,8 @@ public class ChatbotService {
             botContent = openAIService.generateResponse(
                     request.getText(),
                     guideContext,
-                    conversationHistory
+                    conversationHistory,
+                    true
             );
             if (botContent.contains("API 키가 설정되지 않았습니다") || botContent.contains("오류가 발생했습니다")) {
                 botContent = generateBotResponse(request.getText());
@@ -382,6 +640,11 @@ public class ChatbotService {
                 .build();
         chatMessageRepository.save(userMsg);
 
+        // 도메인 밖 질문은 즉시 차단 (스트리밍도 LLM 호출 없이 종료)
+        if (!isInScope(request.getTopic(), request.getText())) {
+            return Flux.just(openAIService.offTopicMessage());
+        }
+
         List<ChatMessage> historyAsc = chatMessageRepository.findBySession_SessionIdOrderByCreatedAtAsc(session.getSessionId());
         List<Map<String, String>> conversationHistory = new ArrayList<>();
         int start = Math.max(0, historyAsc.size() - 10);
@@ -409,7 +672,8 @@ public class ChatbotService {
         return openAIService.generateResponseStreaming(
                 request.getText(),
                 guideContext,
-                conversationHistory
+                conversationHistory,
+                true
         );
     }
 
@@ -544,7 +808,6 @@ public class ChatbotService {
             return "매물은 매물 찾기에서 지역·가격·옵션으로 검색할 수 있어요.";
         }
 
-        return "입력해 주신 내용은 현재 제공 중인 계약서 점검 서비스와는 관련이 없어 정확한 안내가 어려운 점 양해 부탁드립니다.\n"
-                + "계약서 점검과 관련된 궁금한 내용을 입력해 주시면 바로 안내해 드릴게요.";
+        return openAIService.offTopicMessage();
     }
 }

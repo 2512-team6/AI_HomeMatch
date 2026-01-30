@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, Minimize2, FileText, Scale, Home, Package } from 'lucide-react'
+import { X, Send, Minimize2, FileText, Scale, Home, Package, ChevronLeft, ChevronRight } from 'lucide-react'
 import logoHouseImage from '../assets/logo_house.png'
 
 export type ChatTopic = 'contract_review' | 'deed_analysis' | 'residency' | 'moveout' | null
@@ -30,6 +30,7 @@ const WELCOME_NO_TOPIC = "안녕하세요. 궁금한 게 있으면 입력창을 
 export default function FloatingChatbot() {
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false) // 확장/축소 상태
   const [selectedTopic, setSelectedTopic] = useState<ChatTopic>(null)
   const [inputText, setInputText] = useState('')
   const [messages, setMessages] = useState<Message[]>([
@@ -183,13 +184,13 @@ export default function FloatingChatbot() {
 
   // 챗봇 열릴 때·메시지 바뀔 때마다 최근 대화(하단)로 스크롤
   useEffect(() => {
-    if (!isOpen || isMinimized) return
+    if (!isOpen) return
     const id = setTimeout(() => {
       const el = messagesScrollRef.current
       if (el) el.scrollTop = el.scrollHeight
     }, 0)
     return () => clearTimeout(id)
-  }, [isOpen, isMinimized, messages])
+  }, [isOpen, messages])
 
   // 로그아웃 시 채팅 리셋
   useEffect(() => {
@@ -368,32 +369,49 @@ export default function FloatingChatbot() {
   }
 
   return (
-    <div
-      className={`fixed bottom-6 right-6 w-[calc(100vw-3rem)] md:w-96 bg-white rounded-2xl shadow-2xl z-50 flex flex-col transition-all duration-300 ${
-        isMinimized ? 'h-16' : 'h-[420px] md:h-[520px] max-h-[75vh]'
-      }`}
-    >
-      {/* Header */}
-      <div className="bg-primary-600 text-white rounded-t-2xl p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img 
-            src={logoHouseImage} 
-            alt="챗봇" 
-            className="w-8 h-8 object-contain brightness-0 invert" 
-            style={{ filter: 'brightness(0) invert(1)' }}
-          />
-          <div>
-            <h3 className="font-bold text-sm">Home'Scan AI</h3>
-            <p className="text-xs text-primary-100">실시간 도움말</p>
+    <>
+      {/* 모바일 오버레이 */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden transition-opacity"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+      
+      {/* 챗봇 패널 */}
+      <div
+        className={`fixed right-0 top-16 h-[calc(100vh-4rem)] bg-white border-l border-gray-200 shadow-2xl z-50 flex flex-col transition-all duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        } ${
+          isExpanded 
+            ? 'w-[calc(100vw-2rem)] md:w-[800px] lg:w-[900px]' 
+            : 'w-[calc(100vw-2rem)] md:w-[500px] lg:w-[600px]'
+        }`}
+      >
+        {/* Header */}
+        <div 
+          className="bg-primary-600 text-white p-4 flex items-center justify-between shrink-0 cursor-pointer select-none"
+          onDoubleClick={() => setIsOpen(false)}
+          title="더블클릭하여 닫기"
+        >
+          <div className="flex items-center gap-3">
+            <div>
+              <h3 className="font-bold text-sm">Home'Scan AI</h3>
+              <p className="text-xs text-primary-100">실시간 도움말</p>
+            </div>
           </div>
-        </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsMinimized(!isMinimized)}
+            onClick={() => setIsExpanded(!isExpanded)}
             className="p-1.5 hover:bg-primary-700 rounded-lg transition-colors"
-            aria-label={isMinimized ? '최대화' : '최소화'}
+            aria-label={isExpanded ? '축소' : '확장'}
+            title={isExpanded ? '축소' : '확장'}
           >
-            <Minimize2 className="w-4 h-4" />
+            {isExpanded ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
           </button>
           <button
             onClick={() => setIsOpen(false)}
@@ -403,16 +421,14 @@ export default function FloatingChatbot() {
             <X className="w-4 h-4" />
           </button>
         </div>
-      </div>
+        </div>
 
-      {!isMinimized && (
-        <>
-          <div
-            ref={messagesScrollRef}
-            className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 flex flex-col min-h-0"
-          >
-            {/* 메시지 목록 — 열 때·추가 시 항상 최근(하단)부터 보이게 스크롤 */}
-            <div className="space-y-4 flex-1">
+        <div
+          ref={messagesScrollRef}
+          className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 flex flex-col min-h-0"
+        >
+          {/* 메시지 목록 — 열 때·추가 시 항상 최근(하단)부터 보이게 스크롤 */}
+          <div className="space-y-4 flex-1">
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -440,92 +456,91 @@ export default function FloatingChatbot() {
                   </div>
                 </div>
               ))}
-            </div>
           </div>
+        </div>
 
-          <div className="border-t border-gray-200 p-4 bg-white rounded-b-2xl shrink-0">
-            {/* 채팅창 열면 바로 표시: 어떤 도움 받을지 골라 본론 가능 (입력창 포커스 없이도) */}
-            {selectedTopic === null && (
-              <div className="mb-3 space-y-2 pt-1" onMouseDown={(e) => e.preventDefault()}>
-                <p className="text-sm text-gray-700 font-medium">어떤 도움을 받고 싶으세요?</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {TOPICS.map(({ key, label, icon: Icon }) => (
+        <div className="border-t border-gray-200 p-4 bg-white shrink-0">
+          {/* 채팅창 열면 바로 표시: 어떤 도움 받을지 골라 본론 가능 (입력창 포커스 없이도) */}
+          {selectedTopic === null && (
+            <div className="mb-3 space-y-2 pt-1" onMouseDown={(e) => e.preventDefault()}>
+              <p className="text-sm text-gray-700 font-medium">어떤 도움을 받고 싶으세요?</p>
+              <div className="grid grid-cols-2 gap-2">
+                {TOPICS.map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key ?? 'x'}
+                    type="button"
+                    onClick={() => handlePickTopic(key)}
+                    className="flex items-center gap-2 p-2.5 rounded-xl border-2 border-primary-200 bg-primary-50/50 hover:border-primary-500 hover:bg-primary-100 text-primary-800 transition-colors text-sm font-medium"
+                  >
+                    <Icon className="w-5 h-5 shrink-0" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {selectedTopic && (
+            <>
+              <p className="text-xs text-primary-600 mb-2">
+                <span className="font-medium">{TOPICS.find((t) => t.key === selectedTopic)?.label}</span>
+                {' · '}
+                <button
+                  type="button"
+                  onClick={() => setSelectedTopic(null)}
+                  className="underline hover:no-underline"
+                >
+                  다른 주제 선택
+                </button>
+              </p>
+              {suggestedQuestions.length > 0 && !hasSentMessageInCurrentTopic && (
+                <div className="mb-3">
+                  <p className="text-sm text-gray-700 font-medium mb-2">궁금하신 내용이 있을까요?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedQuestions.map((sq) => (
                       <button
-                        key={key ?? 'x'}
+                        key={sq.label}
                         type="button"
-                        onClick={() => handlePickTopic(key)}
-                        className="flex items-center gap-2 p-2.5 rounded-xl border-2 border-primary-200 bg-primary-50/50 hover:border-primary-500 hover:bg-primary-100 text-primary-800 transition-colors text-sm font-medium"
+                        onClick={() => handleSuggestedQuestionClick(sq.label)}
+                        disabled={isLoading}
+                        className="px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-300 text-gray-800 text-sm transition-colors disabled:opacity-50"
                       >
-                        <Icon className="w-5 h-5 shrink-0" />
-                        <span>{label}</span>
+                        {sq.label}
                       </button>
                     ))}
                   </div>
                 </div>
-            )}
-            {selectedTopic && (
-              <>
-                <p className="text-xs text-primary-600 mb-2">
-                  <span className="font-medium">{TOPICS.find((t) => t.key === selectedTopic)?.label}</span>
-                  {' · '}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTopic(null)}
-                    className="underline hover:no-underline"
-                  >
-                    다른 주제 선택
-                  </button>
-                </p>
-                {suggestedQuestions.length > 0 && !hasSentMessageInCurrentTopic && (
-                  <div className="mb-3">
-                    <p className="text-sm text-gray-700 font-medium mb-2">궁금하신 내용이 있을까요?</p>
-                    <div className="flex flex-wrap gap-2">
-                      {suggestedQuestions.map((sq) => (
-                        <button
-                          key={sq.label}
-                          type="button"
-                          onClick={() => handleSuggestedQuestionClick(sq.label)}
-                          disabled={isLoading}
-                          className="px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-300 text-gray-800 text-sm transition-colors disabled:opacity-50"
-                        >
-                          {sq.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyPress={handleKeyPress}
-                onFocus={() => setInputFocused(true)}
-                onBlur={() => setInputFocused(false)}
-                placeholder={selectedTopic ? '궁금한 내용을 입력해 주세요' : '주제를 선택한 뒤 질문해 주세요'}
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm placeholder-gray-400"
-              />
-              <button
-                onClick={handleSend}
-                disabled={!inputText.trim() || isLoading}
-                className="p-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                aria-label="전송"
-              >
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Send className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Enter로 전송, Shift+Enter로 줄바꿈
-            </p>
+              )}
+            </>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyPress={handleKeyPress}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              placeholder={selectedTopic ? '궁금한 내용을 입력해 주세요' : '주제를 선택한 뒤 질문해 주세요'}
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm placeholder-gray-400"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!inputText.trim() || isLoading}
+              className="p-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              aria-label="전송"
+            >
+              {isLoading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+            </button>
           </div>
-        </>
-      )}
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            Enter로 전송, Shift+Enter로 줄바꿈
+          </p>
+        </div>
     </div>
+    </>
   )
 }

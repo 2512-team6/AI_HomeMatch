@@ -22,32 +22,53 @@ JSON keys are fixed in English. All natural-language string VALUES must be writt
 Use EXACT keys and types below. Do not add new keys.
 
 {
-  "conclusion": "string (Korean, one sentence)",
-  "risk_points": ["string", "string", "string"],
-  "law_basis": [
-    { "text": "string (Korean)", "source_id": "LAW:<doc_id>" }
+  "level": "SAFE | NEED_UNDERSTAND | NEED_REVIEW | NEED_FIX",
+  "color": "green | yellow | orange | red",
+
+  "conclusion": "string (Korean, 1-2 sentences, easy for general adults)",
+
+  "risk_points": ["string"],
+
+  "mediation_cases": [
+    { "summary": "string (Korean)", "source_id": "MED:<doc_id>" }
   ],
-  "precedent_basis": [
+  "mediation_case_ids": ["MED:<doc_id>"],
+
+  "precedents": [
     {
-      "why_important": "string (Korean, 1-2 sentences)",
+      "summary": "string (Korean)",
       "source_id": "PREC:<precedent_id>",
-      "evidence": ["string (Korean)"]
+      "evidence_paragraphs": ["string (Korean, taken from PRECEDENT_EVIDENCE)"]
     }
   ],
-  "mediation_cases": [
-    { "text": "string (Korean)", "source_id": "MED:<doc_id>" }
+  "precedent_ids": ["PREC:<precedent_id>"],
+
+  "laws": [
+    { "summary": "string (Korean)", "source_id": "LAW:<doc_id>" }
   ],
-  "recommended_clauses": ["string (Korean)"]
+  "law_ids": ["LAW:<doc_id>"],
+
+  "recommendations": ["string (Korean)"]
 }
 
 Rules:
 - JSON must be parseable by json.loads.
 - Do NOT invent any source_id. source_id must exist in the provided context block exactly.
 - If you cannot find supporting sources in the context, use empty arrays [] for that section.
-  (law_basis / precedent_basis / mediation_cases can be [])
-- precedent_basis.evidence MUST come from [PRECEDENT_EVIDENCE] only. If missing/weak, precedent_basis = [].
-- risk_points: exactly 3 items (max 4 only if necessary).
-- recommended_clauses: 1~3 items. If you are uncertain due to lack of evidence, write cautious conditional wording.
+- precedents[].evidence_paragraphs MUST come from [PRECEDENT_EVIDENCE] only. If missing/weak, precedents=[] and precedent_ids=[].
+- Limits:
+  - risk_points: 0~3 items.
+  - mediation_cases: 0~2 items, mediation_case_ids must match them.
+  - precedents: 0~2 items, precedent_ids must match them.
+  - laws: 0~3 items, law_ids must match them.
+  - recommendations:
+    - If level is SAFE or NEED_UNDERSTAND: recommendations MUST be [].
+    - If level is NEED_REVIEW or NEED_FIX: 0~2 items.
+- Level guidance:
+  - SAFE: evidence is insufficient OR no meaningful risk found.
+  - NEED_UNDERSTAND: may confuse parties; mediation may exist; laws/precedents not required.
+  - NEED_REVIEW: if evidence exists across layers, include them as available.
+  - NEED_FIX: if evidence exists and clause is likely unfair/risky, include all available layers and give up to 2 recommendations.
 """
 
 
@@ -97,6 +118,71 @@ def _try_parse_json(text: str) -> bool:
         return False
 
 
+def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
+    answer = (inp.get("answer") or "").strip()
+    try:
+        obj = json.loads(answer)
+    except Exception:
+        return inp  # api_server에서 이미 방어 파싱하므로 여기선 그대로 둠
+
+    if not isinstance(obj, dict):
+        return inp
+
+    level = obj.get("level")
+    # recommendations 강제
+    if level in ("SAFE", "NEED_UNDERSTAND"):
+        obj["recommendations"] = []
+
+    # 길이 제한 강제
+    def _cap_list(key: str, n: int):
+        v = obj.get(key, [])
+        if isinstance(v, list):
+            obj[key] = v[:n]
+        else:
+            obj[key] = []
+
+    _cap_list("risk_points", 3)
+    _cap_list("mediation_cases", 2)
+    _cap_list("precedents", 2)
+    _cap_list("laws", 3)
+    _cap_list("recommendations", 2)
+
+    # ids를 items와 동기화
+    def _sync_ids(items_key: str, ids_key: str):
+        items = obj.get(items_key, [])
+        if not isinstance(items, list):
+            obj[items_key] = []
+            obj[ids_key] = []
+            return
+        ids = []
+        for it in items:
+            if isinstance(it, dict):
+                sid = it.get("source_id")
+                if isinstance(sid, str) and sid:
+                    ids.append(sid)
+        obj[ids_key] = ids
+
+    _sync_ids("mediation_cases", "mediation_case_ids")
+    _sync_ids("precedents", "precedent_ids")
+    _sync_ids("laws", "law_ids")
+
+    # evidence_paragraphs 누락이면 precedents 비우기(규칙 강제)
+    precedents = obj.get("precedents", [])
+    if isinstance(precedents, list):
+        cleaned = []
+        for p in precedents:
+            if not isinstance(p, dict):
+                continue
+            ev = p.get("evidence_paragraphs", [])
+            if isinstance(ev, list) and len(ev) > 0:
+                cleaned.append(p)
+        obj["precedents"] = cleaned
+        _sync_ids("precedents", "precedent_ids")
+
+    inp["answer"] = json.dumps(obj, ensure_ascii=False)
+    return inp
+
+
 def step_llm(inp: Dict[str, Any]) -> Dict[str, Any]:
     llm: GroqLLMClient = inp["llm"]
     messages: List[Dict[str, str]] = inp["messages"]
@@ -132,8 +218,9 @@ def build_chain() -> RunnableSequence:
         run_name="02_prompt_messages"
     )
     llm = RunnableLambda(step_llm).with_config(run_name="03_llm_groq_generate")
+    post = RunnableLambda(step_postprocess).with_config(run_name="04_postprocess")
 
-    return RunnableSequence(rag, prompt, llm)
+    return RunnableSequence(rag, prompt, llm, post)
 
 
 def main() -> None:
@@ -150,8 +237,8 @@ def main() -> None:
     llm = GroqLLMClient(
         cfg=GroqLLMConfig(
             # 좋은 모델 기본 가정이면 여기만 바꾸면 됨:
-            # model="llama-3.3-70b-versatile",
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
+            # model="llama-3.1-8b-instant",
             temperature=0.1,
             max_tokens=1600,  # ✅ JSON 잘림 방지
             user_max_chars=9000,

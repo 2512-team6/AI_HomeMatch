@@ -50,6 +50,7 @@
       "statuses": ["접수 완료", "처리 중", "처리 완료", "거절"],
       "tips": [
         "문제가 발생하면 즉시 사진을 촬영해 기록해 두세요.",
+        "오염이나 악취처럼 원인 확인이 어려운 이슈는 사진(또는 영상)과 함께 발생 시각, 위치, 상태를 구체적으로 남겨 두세요.",
         "처리 상태를 주기적으로 업데이트하세요.",
         "임대인과의 소통 내용도 함께 기록해 두면 도움이 됩니다."
       ]
@@ -162,6 +163,14 @@
         "tip": "소송 전 단계에서 해결되는 경우도 많습니다."
       }
     },
+    "moving_schedule": {
+      "title": "이사·이삿짐 일정",
+      "description": "퇴실 시 이사는 계약 만료일을 기준으로 일정을 잡는 것이 좋습니다.",
+      "tips": [
+        "이삿짐 센터(이사 업체)는 보통 퇴실 1~2주 전에 예약하는 것이 좋습니다.",
+        "퇴실 당일에는 열쇠 반납과 최종 점검이 있으므로, 이사는 퇴실 당일 또는 그 전날로 맞추면 됩니다."
+      ]
+    },
     "timeline_guide": {
       "title": "퇴실 준비 일정 가이드",
       "d_minus_7": {
@@ -169,7 +178,8 @@
         "tasks": [
           "전기·가스·수도 해지 신청",
           "우편물 주소 변경 신청",
-          "입주 기록 확인 및 다운로드"
+          "입주 기록 확인 및 다운로드",
+          "이삿짐 센터 예약 (1~2주 전 권장)"
         ]
       },
       "d_minus_3": {
@@ -274,7 +284,8 @@
       { "label": "보증금은 언제 받을 수 있나요", "section": "moveout_management.deposit_management" },
       { "label": "원상복구는 무엇을 확인하나요", "section": "moveout_management.restoration_checklist" },
       { "label": "분쟁 예방 방법이 궁금해요", "section": "moveout_management.dispute_prevention" },
-      { "label": "퇴실 준비 일정이 궁금해요", "section": "moveout_management.timeline_guide" }
+      { "label": "퇴실 준비 일정이 궁금해요", "section": "moveout_management.timeline_guide" },
+      { "label": "퇴실 시 이사는 언제 하는 게 좋아요", "section": "moveout_management.moving_schedule" }
     ],
     "contract_review": [
       { "label": "계약서 점검은 어떻게 하나요", "section": "contract_guide.review" }

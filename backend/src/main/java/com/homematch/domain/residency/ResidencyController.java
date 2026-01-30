@@ -298,4 +298,77 @@ public class ResidencyController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
     }
+
+    // ========== Defect Issue Timelines ==========
+    @GetMapping("/defect-issues/{id}/timelines")
+    public ResponseEntity<List<ResidencyIssueTimelineResponse>> getDefectIssueTimelines(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long id) {
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            Integer userNo = getUserIdFromToken(token);
+            List<ResidencyIssueTimelineResponse> timelines = residencyService.getDefectIssueTimelines(userNo, id);
+            return ResponseEntity.ok(timelines);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+    }
+
+    @PostMapping("/defect-issues/{id}/timelines")
+    public ResponseEntity<?> createDefectIssueTimeline(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long id,
+            @RequestBody ResidencyIssueTimelineRequest request) {
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            Integer userNo = getUserIdFromToken(token);
+            ResidencyIssueTimelineResponse response = residencyService.createDefectIssueTimeline(userNo, id, request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("{\"error\": \"" + e.getMessage() + "\"}");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{\"error\": \"서버 오류가 발생했습니다: " + e.getMessage() + "\"}");
+        }
+    }
+
+    // ========== Agreement Records ==========
+    @GetMapping("/agreement-records")
+    public ResponseEntity<List<ResidencyAgreementRecordResponse>> getAgreementRecords(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam(required = false) Integer limit) {
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            Integer userNo = getUserIdFromToken(token);
+            List<ResidencyAgreementRecordResponse> records = residencyService.getAgreementRecords(userNo, limit);
+            return ResponseEntity.ok(records);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+    }
+
+    @PostMapping("/agreement-records")
+    public ResponseEntity<?> createAgreementRecord(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody ResidencyAgreementRecordRequest request) {
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            Integer userNo = getUserIdFromToken(token);
+            ResidencyAgreementRecordResponse response = residencyService.createAgreementRecord(userNo, request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("{\"error\": \"" + e.getMessage() + "\"}");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{\"error\": \"서버 오류가 발생했습니다: " + e.getMessage() + "\"}");
+        }
+    }
 }

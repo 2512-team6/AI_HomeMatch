@@ -446,25 +446,25 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
+      <footer className="bg-gray-900 text-white py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-3 gap-6">
             <div>
-              <div className="flex items-center space-x-3 mb-4">
+              <div className="flex items-center space-x-2 mb-3">
                 <img 
                   src={logoHouseImage} 
                   alt="Home'Scan Logo" 
-                  className="h-12 w-auto object-contain"
+                  className="h-9 w-auto object-contain"
                 />
-                <span className="text-3xl font-bold text-white">Home'Scan</span>
+                <span className="text-xl font-semibold text-white tracking-tight">Home'Scan</span>
               </div>
-              <p className="text-gray-400 text-base">
+              <p className="text-gray-400 text-sm leading-relaxed">
                 Home'Scan이 여러분의 주거 여정을 간소화합니다.
               </p>
             </div>
             <div>
-              <h4 className="font-bold mb-4">고객지원</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
+              <h4 className="text-sm font-semibold mb-3">고객지원</h4>
+              <ul className="space-y-1.5 text-sm text-gray-400">
                 <li>
                   <button 
                     onClick={() => setShowFAQModal(true)}
@@ -484,8 +484,8 @@ export default function LandingPage() {
               </ul>
             </div>
             <div>
-              <h4 className="font-bold mb-4">법적 고지</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
+              <h4 className="text-sm font-semibold mb-3">법적 고지</h4>
+              <ul className="space-y-1.5 text-sm text-gray-400">
                 <li>
                   <button 
                     onClick={() => setShowTermsModal(true)}
@@ -513,8 +513,8 @@ export default function LandingPage() {
               </ul>
             </div>
           </div>
-          <div className="mt-8 pt-8 border-t border-gray-800 text-sm text-gray-400">
-            <p>
+          <div className="mt-6 pt-6 border-t border-gray-800 text-xs text-gray-400">
+            <p className="leading-relaxed">
               면책 조항: Home'Scan에서 제공하는 정보는 일반적인 지침이며 법률 자문을 대체하지 않습니다.
             </p>
           </div>

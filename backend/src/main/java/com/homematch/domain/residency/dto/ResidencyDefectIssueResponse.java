@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -18,5 +19,7 @@ public class ResidencyDefectIssueResponse {
     private String imageUrl;
     private LocalDate issueDate;
     private ResidencyDefectIssue.IssueStatus status;
+    private ResidencyDefectIssue.RiskLevel riskLevel;
+    private LocalDateTime lastNotifiedAt;
     private String memo;
 }

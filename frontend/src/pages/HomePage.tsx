@@ -7,7 +7,8 @@ import {
   Building2, 
   ArrowRight,
   Bell,
-  MapPin
+  MapPin,
+  Calendar
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -174,6 +175,125 @@ export default function HomePage() {
         </Link>
       </div>
 
+      {/* 최근 활동 */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">최근 활동</h2>
+            <p className="text-sm text-gray-500 mt-1">방금까지 살펴본 매물과 계약서 기록이에요.</p>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* 최근 본 매물 */}
+          <div className="bg-gray-50 rounded-xl p-4 h-full flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
+                  <Building2 className="w-4 h-4 text-primary-600" />
+                </div>
+                <h3 className="text-base font-semibold text-gray-900">최근 본 매물</h3>
+              </div>
+              {recentViews.length > 0 && (
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('recentViewedProperties')
+                    setRecentViews([])
+                  }}
+                  className="text-xs text-gray-500 hover:text-gray-800"
+                >
+                  전체 삭제
+                </button>
+              )}
+            </div>
+
+            {recentViews.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center rounded-lg border border-dashed border-gray-200 bg-white/60 py-6 px-4">
+                <Building2 className="w-10 h-10 text-gray-300 mb-3" />
+                <p className="text-sm text-gray-600 mb-3">아직 둘러본 매물이 없습니다.</p>
+                <Link
+                  to="/properties"
+                  className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-full bg-primary-50 text-primary-700 hover:bg-primary-100 font-medium"
+                >
+                  매물 보러가기
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-1 grid grid-cols-2 gap-3">
+                {recentViews.map((view) => (
+                  <Link
+                    key={view.listingId}
+                    to={`/properties/${view.listingId}`}
+                    className="group rounded-lg bg-white overflow-hidden border border-gray-200 hover:border-primary-300 hover:shadow-md transition-all"
+                  >
+                    <div className="h-24 bg-gradient-to-br from-gray-100 to-gray-200" />
+                    <div className="p-3">
+                      <div className="text-[11px] text-gray-500 mb-1 truncate">
+                        {getAddressParts(view.data.address)}
+                      </div>
+                      <div className="font-semibold text-sm text-gray-900 mb-0.5 truncate">
+                        {formatPrice(view.data)}
+                      </div>
+                      <div className="text-[11px] text-gray-600">{formatArea(view.data.areaM2)}</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 최근 점검한 계약서 */}
+          <div className="bg-gray-50 rounded-xl p-4 h-full flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-primary-600" />
+                </div>
+                <h3 className="text-base font-semibold text-gray-900">최근 점검한 계약서</h3>
+              </div>
+              <Link 
+                to="/contract/review" 
+                className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+              >
+                전체 보기
+              </Link>
+            </div>
+
+            <div className="flex-1 space-y-2">
+              {[1, 2].map((i) => (
+                <Link 
+                  key={i} 
+                  to="/contract/review" 
+                  className="block bg-white border border-gray-200 rounded-lg p-3 hover:border-primary-300 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-4 h-4 text-primary-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-[13px] text-gray-900 mb-0.5">
+                          전세 계약서 | 강남구 역삼동
+                        </div>
+                        <div className="text-[11px] text-gray-500 mb-1">최종 점검일: 2024.01.15</div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full border border-green-100">
+                            위험 낮음
+                          </span>
+                          <span className="text-[11px] text-gray-500">특약 3개</span>
+                        </div>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-primary-600 group-hover:translate-x-0.5 transition-all mt-1" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 집 찾기 - 간단하게 통합 */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
@@ -237,117 +357,62 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 알림 섹션 */}
+      {/* 알림 섹션 - 정말 중요한 것만 표시 (현재는 예시 데이터) */}
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-4">알림</h2>
         <div className="space-y-3">
-          <div className="bg-white border-l-4 border-red-500 rounded-lg p-4 flex items-start space-x-3 hover:shadow-md transition-shadow">
-            <AlertTriangle className="w-6 h-6 text-red-500 mt-1 flex-shrink-0" />
+          {/* 1. 계약 만료/갱신 알림 */}
+          <div className="flex items-center gap-4 px-4 py-3 bg-white rounded-xl">
+            <div className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full bg-red-50">
+              <AlertTriangle className="w-6 h-6 text-red-500" />
+            </div>
             <div className="flex-1">
-              <h3 className="font-bold text-gray-900 mb-1">계약 만료 임박</h3>
-              <p className="text-sm text-gray-600">강남구 역삼동 계약 만료일이 2개월 남았습니다. 갱신 여부를 확인하세요.</p>
+              <div className="flex items-center gap-2 mb-1.5">
+                <h3 className="font-semibold text-gray-900 text-[15px]">계약 만료 60일 전 알림</h3>
+                <span className="text-xs px-3 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold tracking-tight">
+                  중요
+                </span>
+              </div>
+              <p className="text-sm leading-relaxed text-gray-600">
+                임대차 계약 만료일이 60일 남았습니다. 갱신 여부 통보, 이사 준비, 보증금 반환 계획을 미리 확인해 주세요.
+              </p>
             </div>
           </div>
-          <div className="bg-white border-l-4 border-blue-500 rounded-lg p-4 flex items-start space-x-3 hover:shadow-md transition-shadow">
-            <Bell className="w-6 h-6 text-blue-500 mt-1 flex-shrink-0" />
+
+          {/* 2. 확정일자 / 전입신고 미등록 알림 */}
+          <div className="flex items-center gap-4 px-4 py-3 bg-white rounded-xl">
+            <div className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full bg-blue-50">
+              <Bell className="w-6 h-6 text-blue-500" />
+            </div>
             <div className="flex-1">
-              <h3 className="font-bold text-gray-900 mb-1">새로운 계약서 점검 결과</h3>
-              <p className="text-sm text-gray-600">업로드하신 전세 계약서의 AI 점검 결과가 나왔습니다. 지금 확인하세요.</p>
+              <div className="flex items-center gap-2 mb-1.5">
+                <h3 className="font-semibold text-gray-900 text-[15px]">보증금 보호를 위한 절차 확인</h3>
+                <span className="text-xs px-3 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold tracking-tight">
+                  보증금 보호
+                </span>
+              </div>
+              <p className="text-sm leading-relaxed text-gray-600">
+                현재 주소의 확정일자 / 전입신고 여부를 아직 등록하지 않으셨다면, 보증금 보호를 위해 반드시 진행해 주세요.
+              </p>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* 최근 활동 */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* 최근 본 매물 */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">최근 본 매물</h2>
-            {recentViews.length > 0 && (
-              <button
-                onClick={() => {
-                  localStorage.removeItem('recentViewedProperties')
-                  setRecentViews([])
-                }}
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                전체 삭제
-              </button>
-            )}
-          </div>
-          {recentViews.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
-              <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-600 mb-4">최근 본 매물이 없습니다.</p>
-              <Link
-                to="/properties"
-                className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium"
-              >
-                매물 찾기
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+          {/* 3. 월세·관리비 납부일 임박 알림 */}
+          <div className="flex items-center gap-4 px-4 py-3 bg-white rounded-xl">
+            <div className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full bg-amber-50">
+              <Calendar className="w-6 h-6 text-amber-500" />
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
-              {recentViews.map((view) => (
-                <Link
-                  key={view.listingId}
-                  to={`/properties/${view.listingId}`}
-                  className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-all group"
-                >
-                  <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200"></div>
-                  <div className="p-3">
-                    <div className="text-xs text-gray-500 mb-1 truncate">
-                      {getAddressParts(view.data.address)}
-                    </div>
-                    <div className="font-bold text-sm mb-1 truncate">{formatPrice(view.data)}</div>
-                    <div className="text-xs text-gray-600">{formatArea(view.data.areaM2)}</div>
-                  </div>
-                </Link>
-              ))}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1.5">
+                <h3 className="font-semibold text-gray-900 text-[15px]">월세·관리비 납부일 임박</h3>
+                <span className="text-xs px-3 py-0.5 rounded-full bg-amber-50 text-amber-600 font-semibold tracking-tight">
+                  일정
+                </span>
+              </div>
+              <p className="text-sm leading-relaxed text-gray-600">
+                이번 달 월세·관리비 납부일이 임박했습니다. 연체로 인한 불이익이 발생하지 않도록 납부 일정을 다시 한 번 확인해 주세요.
+              </p>
             </div>
-          )}
-        </div>
-
-        {/* 최근 점검한 계약서 */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">최근 점검한 계약서</h2>
-            <Link 
-              to="/contract/review" 
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-            >
-              전체 보기
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {[1, 2].map((i) => (
-              <Link 
-                key={i} 
-                to="/contract/review" 
-                className="block bg-white border border-gray-200 rounded-lg p-4 hover:border-primary-300 hover:shadow-md transition-all group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900 mb-1">전세 계약서 | 강남구 역삼동</div>
-                      <div className="text-xs text-gray-500 mb-1">최종 점검일: 2024.01.15</div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
-                          위험 낮음
-                        </span>
-                        <span className="text-xs text-gray-500">특약 3개</span>
-                      </div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-primary-600 group-hover:translate-x-1 transition-all" />
-                </div>
-              </Link>
-            ))}
           </div>
         </div>
       </div>

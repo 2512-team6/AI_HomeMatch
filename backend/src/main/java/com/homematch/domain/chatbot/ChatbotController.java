@@ -127,6 +127,14 @@ public class ChatbotController {
                 .doOnNext(acc::append)
                 .concatWith(Flux.defer(() -> {
                     String normalized = chatbotService.normalizeResponseTextForDisplay(acc.toString());
+
+                    // 인스코프 질문인데도 고정 문구로 끝난 경우: 비스트리밍으로 한 번 더 생성해 최종 답을 교체
+                    if (chatbotService.isInScopeForChatbot(request.getTopic(), request.getText())
+                            && chatbotService.isOffTopicFinalText(normalized)) {
+                        String regenerated = chatbotService.regenerateFinalAnswer(userNo, request);
+                        normalized = chatbotService.normalizeResponseTextForDisplay(regenerated);
+                    }
+
                     chatbotService.appendBotMessage(userNo, normalized);
                     return Flux.just("[FINAL]\n" + normalized);
                 }));

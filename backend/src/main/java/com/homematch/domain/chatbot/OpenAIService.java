@@ -41,8 +41,13 @@ public class OpenAIService {
 
     /** 사이트와 별개 내용(가이드 밖) 질문 시 사용할 고정 안내 문구. 줄바꿈·띄어쓰기 유지 */
     private static final String OFF_TOPIC_MESSAGE =
-            "입력해 주신 내용은 현재 제공 중인 계약서 점검 서비스와는 관련이 없어 정확한 안내가 어려운 점 양해 부탁드립니다.\n"
-            + "계약서 점검과 관련된 궁금한 내용을 입력해 주시면 바로 안내해 드릴게요.";
+            "입력해 주신 내용은 현재 제공 중인 Home'Scan 가이드에 없는 내용이라 정확한 안내가 어려운 점 양해 부탁드립니다.\n"
+            + "가이드에 있는 주제(계약서 점검, 등기부등본 분석, 거주 중 관리, 퇴실 관리)와 관련된 내용을 입력해 주시면 바로 안내해 드릴게요.";
+
+    /** 서버/서비스에서 사용할 사이트 외 고정 문구 반환 */
+    public String offTopicMessage() {
+        return OFF_TOPIC_MESSAGE;
+    }
 
     private final WebClient webClient;
     private final String apiKey;
@@ -66,6 +71,10 @@ public class OpenAIService {
      * 재시도·타임아웃·usage 로깅·가이드 길이 제한·가이드 이탈 검사 적용.
      */
     public String generateResponse(String userMessage, String guideContext, List<Map<String, String>> conversationHistory) {
+        return generateResponse(userMessage, guideContext, conversationHistory, true);
+    }
+
+    public String generateResponse(String userMessage, String guideContext, List<Map<String, String>> conversationHistory, boolean inScope) {
         if (apiKey == null || apiKey.isEmpty()) {
             return "OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가해주세요.";
         }
@@ -73,7 +82,7 @@ public class OpenAIService {
         String truncatedGuide = truncateGuideContext(guideContext);
 
         try {
-            String systemPrompt = buildSystemPrompt(truncatedGuide);
+            String systemPrompt = buildSystemPrompt(truncatedGuide, inScope);
             List<Map<String, String>> messages = buildMessages(systemPrompt, userMessage, conversationHistory);
             Map<String, Object> requestBody = buildRequestBody(messages);
 
@@ -99,8 +108,41 @@ public class OpenAIService {
                     String cleaned = sanitizeMarkdown(raw);
                     cleaned = restoreKoreanSpacing(cleaned);
                     cleaned = normalizePunctuationAndLineBreaks(cleaned);
-                    cleaned = normalizeOffTopicToFixedMessage(cleaned);
-                    return applyGuideDriftDisclaimer(cleaned);
+                    cleaned = normalizeOffTopicToFixedMessage(cleaned, userMessage);
+                    cleaned = applyGuideDriftDisclaimer(cleaned);
+
+                    // 인스코프인데도 고정 문구가 나온 경우: 프롬프트를 더 강하게 해서 1회 재시도
+                    if (inScope && isOffTopicMessage(cleaned)) {
+                        String retryPrompt = buildSystemPrompt(truncatedGuide, true) +
+                                "\n\n[추가 지시]\n- 이 질문은 Home'Scan 도메인 안 질문입니다.\n- 절대 [사이트 외 질문 고정 문구]를 출력하지 마세요.\n";
+                        List<Map<String, String>> retryMessages = buildMessages(retryPrompt, userMessage, conversationHistory);
+                        Map<String, Object> retryBody = buildRequestBody(retryMessages);
+                        String retryJson = webClient.post()
+                                .uri("/chat/completions")
+                                .bodyValue(retryBody)
+                                .retrieve()
+                                .bodyToMono(String.class)
+                                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                                .block(Duration.ofSeconds(TIMEOUT_SECONDS + 10));
+                        if (retryJson != null && !retryJson.isBlank()) {
+                            JsonNode retryRoot = objectMapper.readTree(retryJson);
+                            logUsage(retryRoot);
+                            JsonNode retryChoices = retryRoot.get("choices");
+                            if (retryChoices != null && retryChoices.isArray() && retryChoices.size() > 0) {
+                                JsonNode retryMsg = retryChoices.get(0).get("message");
+                                if (retryMsg != null && retryMsg.has("content")) {
+                                    String r = retryMsg.get("content").asText();
+                                    String c = sanitizeMarkdown(r);
+                                    c = restoreKoreanSpacing(c);
+                                    c = normalizePunctuationAndLineBreaks(c);
+                                    c = normalizeOffTopicToFixedMessage(c, userMessage);
+                                    c = applyGuideDriftDisclaimer(c);
+                                    return c;
+                                }
+                            }
+                        }
+                    }
+                    return cleaned;
                 }
             }
             return "응답을 생성하는 중 오류가 발생했습니다.";
@@ -116,12 +158,17 @@ public class OpenAIService {
      */
     public Flux<String> generateResponseStreaming(String userMessage, String guideContext,
                                                    List<Map<String, String>> conversationHistory) {
+        return generateResponseStreaming(userMessage, guideContext, conversationHistory, true);
+    }
+
+    public Flux<String> generateResponseStreaming(String userMessage, String guideContext,
+                                                   List<Map<String, String>> conversationHistory, boolean inScope) {
         if (apiKey == null || apiKey.isEmpty()) {
             return Flux.just("OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가해주세요.");
         }
 
         String truncatedGuide = truncateGuideContext(guideContext);
-        String systemPrompt = buildSystemPrompt(truncatedGuide);
+        String systemPrompt = buildSystemPrompt(truncatedGuide, inScope);
         List<Map<String, String>> messages = buildMessages(systemPrompt, userMessage, conversationHistory);
         Map<String, Object> requestBody = buildRequestBody(messages);
         requestBody.put("stream", true);
@@ -151,6 +198,13 @@ public class OpenAIService {
             log.warn("스트리밍 중 오류: {}", t.getMessage());
             return Flux.just("(응답 생성 중 일시 오류가 있었습니다.)");
         });
+    }
+
+    private boolean isOffTopicMessage(String text) {
+        if (text == null) return false;
+        String a = text.replaceAll("\\s+", "");
+        String b = OFF_TOPIC_MESSAGE.replaceAll("\\s+", "");
+        return !a.isBlank() && a.contains(b);
     }
 
     private String dataBufferToString(DataBuffer db) {
@@ -251,20 +305,29 @@ public class OpenAIService {
         }
     }
 
-    /** 사이트 외 질문에 대한 답이면 고정 문구(줄바꿈·띄어쓰기 유지)로 통일. 띄어쓰기 없는 출력도 감지 */
-    private String normalizeOffTopicToFixedMessage(String text) {
+    /** 사이트 외 질문에 대한 답이면 고정 문구(줄바꿈·띄어쓰기 유지)로 통일. (LLM 출력 변형/띄어쓰기 차이 흡수용) */
+    private String normalizeOffTopicToFixedMessage(String text, String userMessage) {
         if (text == null || text.isBlank()) return text;
         String t = text.trim();
-        // 띄어쓰기 있는 경우
-        if (t.contains("관련이 없어") && (t.contains("안내가 어려운") || t.contains("양해 부탁")))
+
+        // LLM이 "범위 밖" 거절 문구를 만들었거나, 고정 문구를 변형했을 때만 통일한다.
+        // (인스코프 질문에 대해서는 가이드에 없는 내용도 일반적인 참고 안내를 할 수 있으므로,
+        //  "가이드에 없" 같은 표현만으로는 강제 치환하지 않는다.)
+        if (t.contains("범위") && (t.contains("밖") || t.contains("외"))) {
             return OFF_TOPIC_MESSAGE;
-        if (t.contains("가이드에 없") || t.contains("제가 안내하기 어려운") || t.contains("제가 답하기 어려운"))
+        }
+        if (t.contains("관련이 없어") && (t.contains("안내가 어려운") || t.contains("양해 부탁"))) {
             return OFF_TOPIC_MESSAGE;
+        }
+
         // 띄어쓰기 없이 나온 경우(입력해주신내용은현재제공중인... 등) → 고정 문구로 치환
         String noSpace = t.replaceAll("\\s+", "");
+        String fixedNoSpace = OFF_TOPIC_MESSAGE.replaceAll("\\s+", "");
+        if (!fixedNoSpace.isBlank() && noSpace.contains(fixedNoSpace)) return OFF_TOPIC_MESSAGE;
         if (noSpace.contains("계약서점검서비스와는관련이없어") || noSpace.contains("양해부탁드립니다")
-                || noSpace.contains("계약서점검과관련된") || noSpace.contains("입력해주신내용은현재제공중인"))
+                || noSpace.contains("계약서점검과관련된") || noSpace.contains("입력해주신내용은현재제공중인")) {
             return OFF_TOPIC_MESSAGE;
+        }
         return text;
     }
 
@@ -297,7 +360,8 @@ public class OpenAIService {
         String s = sanitizeMarkdown(raw);
         s = restoreKoreanSpacing(s);
         s = normalizePunctuationAndLineBreaks(s);
-        s = normalizeOffTopicToFixedMessage(s);
+        // 사용자 메시지 정보가 없으므로 관련 주제 체크 없이 처리 (스트리밍 완료 후 호출)
+        s = normalizeOffTopicToFixedMessage(s, null);
         return s;
     }
 
@@ -380,7 +444,27 @@ public class OpenAIService {
     }
 
     private String buildSystemPrompt(String guideContext) {
-        return "당신은 Home'Scan 앱 이용자를 돕는 상담사입니다. 아래 [가이드 정보]만을 참고해서 답하세요.\n\n" +
+        return buildSystemPrompt(guideContext, true);
+    }
+
+    private String buildSystemPrompt(String guideContext, boolean inScope) {
+        if (!inScope) {
+            return "당신은 Home'Scan 앱 이용자를 돕는 상담사입니다.\n\n" +
+                    "[규칙]\n" +
+                    "- 이 질문은 Home'Scan 도메인 밖 질문입니다.\n" +
+                    "- 아래 [사이트 외 질문 고정 문구]만 그대로 출력하세요.\n\n" +
+                    "[사이트 외 질문 고정 문구]:\n" + OFF_TOPIC_MESSAGE;
+        }
+
+        return "당신은 Home'Scan 앱 이용자를 돕는 상담사입니다.\n\n" +
+                "[서버 판정]\n" +
+                "- 이 질문은 Home'Scan 도메인 안 질문입니다.\n" +
+                "- 따라서 [사이트 외 질문 고정 문구]는 절대 출력하지 마세요.\n\n" +
+                "[핵심 정책]\n" +
+                "- 사용자의 질문이 Home'Scan 도메인(주거/임대차/매물/계약/등기/거주 중 하자/퇴실/보증금/분쟁, 그리고 앱 사용법)에 해당하면 도움 되는 답을 하세요.\n" +
+                "- 이때 아래 [가이드 정보]에 관련 내용이 있으면 그것을 우선 활용하고, 부족한 부분은 일반적인 참고 수준에서 보완해도 됩니다.\n" +
+                "  단, 가이드에 없는 '특정 법 조항/판례/정확한 기간/금액'을 단정해서 말하지 마세요.\n" +
+                "- 답변에서 \"가이드에 없어서\" 같은 표현으로 책임 회피하지 말고, 가능한 범위에서 바로 도움이 되게 안내하세요.\n\n" +
                 "[필수] 띄어쓰기:\n" +
                 "- 한국어로 답할 때 반드시 띄어쓰기를 해 주세요. 단어와 조사(은,는,이,가,을,를,와,과,의,에,에서) 사이, 단어와 단어 사이에 공백을 넣어 주세요.\n" +
                 "- 잘못된 예(사용 금지): 가이드에는거주계약기간관리, 주거비관리, 입주상태기록\n" +
@@ -389,16 +473,15 @@ public class OpenAIService {
                 "- 진짜 사람 상담사처럼 짧고 명확하게 말하세요. GPT/AI스러운 말투(예: \"~해 드릴게요\", \"궁금하신 점\" 반복, 과한 존댓말)는 쓰지 마세요.\n" +
                 "- 절대 정답을 주는 게 아니라 '참고하면 좋다'는 식으로만 안내하세요. 예: \"가이드에는 ○○라고 돼 있어요. 그걸 참고해 보시고, 더 자세한 건 퇴실관리 페이지에서 확인해 보시면 돼요.\"\n" +
                 "- 답변에 ###, **, *, #, 불릿 리스트용 마크다운을 사용하지 마세요. 일반 문장만으로 써 주세요.\n" +
-                "- 문장 끝에는 반드시 마침표(.)를 붙이고, 문장이 바뀔 때마다 줄바꿈을 넣어 주세요.\n\n" +
-                "내용 규칙:\n" +
-                "- 답변의 근거는 오직 아래 가이드 정보뿐입니다. 가이드에 없는 내용은 추측하지 말고, 아래 [사이트 외 질문 고정 문구]를 **줄바꿈·띄어쓰기 변경 없이 그대로** 사용하세요.\n" +
-                "- 가이드에 있는 내용만 간단히 풀어서 알려 주세요. 법·금액·기간 등은 가이드에 적힌 것만 인용하세요.\n" +
+                "- 문장 끝에는 반드시 마침표(.)를 붙이고, 문장이 바뀔 때마다 줄바꿈을 넣어 주세요.\n" +
                 "- 필요하면 한 줄만 \"(가이드 기준 참고용이에요, 법률 자문이 아님)\"처럼 붙여도 됩니다.\n\n" +
-                "[사이트 외 질문 고정 문구] (가이드에 없는 주제일 때 반드시 아래만 사용):\n" + OFF_TOPIC_MESSAGE + "\n\n" +
                 "답변 예시 (톤 참고):\n" +
                 "사용자: 보증금은 언제 받을 수 있나요?\n" +
                 "어시스턴트: 가이드에는 퇴실 후 인도받은 뒤에 보증금 반환한다고 돼 있어요. 보통 1개월 안에 하는 걸 합리적인 기간으로 보는 경우가 많고, 관리비 정산·점검 같은 걸로 조금 늦어질 수 있다고 되어 있어요. 정확한 일정은 퇴실관리 페이지에서 확인해 보시는 게 좋아요.\n\n" +
-                "가이드 정보 (이 내용만 사용할 것):\n" + guideContext + "\n\n" +
-                "가이드에 없는 주제는 위 [사이트 외 질문 고정 문구]를 한 글자도 바꾸지 않고 그대로 답하세요.";
+                "사용자: 벽이 오염됐는데 어떻게 해야 하나요?\n" +
+                "어시스턴트: 우선 사진이나 영상으로 상태와 위치를 남겨 두는 게 좋아요.\n" +
+                "거주 중 이슈 기록에 발생 시각, 위치, 상태를 같이 기록해 두면 이후 정리할 때 도움이 돼요.\n" +
+                "임대인과 소통한 내용도 함께 기록해 두세요.\n\n" +
+                "가이드 정보 (참고용):\n" + guideContext;
     }
 }
