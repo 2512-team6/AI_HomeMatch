@@ -2,28 +2,63 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from langchain_step_names import build_chain, RagParams
-from llm_client_groq import GroqLLMClient, GroqLLMConfig
-
 app = FastAPI(title="AI_HomeMatch RAG API")
 
-chain = build_chain()
+# core/register.py 를 import할 수 있도록 core 경로를 sys.path에 추가
+_CORE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _CORE_DIR not in sys.path:
+    sys.path.insert(0, _CORE_DIR)
 
-# 서버 시작 시 1회 생성 (매 요청마다 생성하지 않음)
-llm = GroqLLMClient(
-    cfg=GroqLLMConfig(
-        model="llama-3.3-70b-versatile",
-        temperature=0.1,
-        max_tokens=1600,
-        user_max_chars=9000,
-        retry=2,
-    )
-)
+try:
+    from register import router as deed_router  # type: ignore
+
+    app.include_router(deed_router)
+except Exception as e:
+    # 등기부 모듈이 없어도 계약서 API는 동작하게 유지
+    # (실제 오류는 서버 콘솔에서 확인)
+    print("[WARN] register router load failed:", repr(e))
+
+_chain: Any = None
+_llm: Any = None
+
+
+def _get_chain_and_llm():
+    """
+    계약서 RAG 전용 chain/llm을 lazy-init.
+    - langchain/groq 의존성 또는 GROQ_API_KEY가 없으면 503으로 안내
+    - 등기부(register) API는 이 실패와 무관하게 동작 가능
+    """
+    global _chain, _llm
+    if _chain is not None and _llm is not None:
+        return _chain, _llm
+
+    try:
+        from langchain_step_names import build_chain  # type: ignore
+        from llm_client_groq import GroqLLMClient, GroqLLMConfig  # type: ignore
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"RAG 의존성 로드 실패: {e!r}")
+
+    try:
+        _chain = build_chain()
+        _llm = GroqLLMClient(
+            cfg=GroqLLMConfig(
+                model="llama-3.3-70b-versatile",
+                temperature=0.1,
+                max_tokens=1600,
+                user_max_chars=9000,
+                retry=2,
+            )
+        )
+        return _chain, _llm
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"RAG 초기화 실패(GROQ_API_KEY 등 확인): {e!r}")
 
 
 # -----------------------------
@@ -44,14 +79,17 @@ class AnalyzeResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-def _parse_rag_params(rag_params: Optional[Dict[str, Any]]) -> RagParams:
+def _parse_rag_params(rag_params: Optional[Dict[str, Any]]):
     try:
+        from langchain_step_names import RagParams  # type: ignore
+
         return RagParams(**rag_params) if rag_params else RagParams()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"invalid rag_params: {e!r}")
 
 
-def _invoke_chain(*, clause_text: str, params: RagParams) -> str:
+def _invoke_chain(*, clause_text: str, params: Any) -> str:
+    chain, llm = _get_chain_and_llm()
     out = chain.invoke(
         {
             "clause_text": clause_text,
