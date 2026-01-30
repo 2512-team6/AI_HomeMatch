@@ -28,7 +28,6 @@ def main() -> None:
 
     resp = requests.post(API_URL, json=payload, timeout=120)
     print("[HTTP STATUS]", resp.status_code)
-    print(resp.text)
 
     if resp.status_code != 200:
         print("[FAIL] non-200 response")
