@@ -4,6 +4,7 @@ import com.homematch.domain.residency.dto.*;
 import com.homematch.domain.user.User;
 import com.homematch.domain.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,8 @@ public class ResidencyService {
     private final HousingCostSettingsRepository housingCostSettingsRepository;
     private final MonthlyHousingRecordRepository monthlyHousingRecordRepository;
     private final ResidencyDefectIssueRepository residencyDefectIssueRepository;
+    private final ResidencyIssueTimelineRepository residencyIssueTimelineRepository;
+    private final ResidencyAgreementRecordRepository residencyAgreementRecordRepository;
     private final UserRepository userRepository;
 
     // ========== Housing Contract ==========
@@ -260,10 +263,12 @@ public class ResidencyService {
                 .imageUrl(request.getImageUrl())
                 .issueDate(request.getIssueDate())
                 .status(request.getStatus() != null ? request.getStatus() : ResidencyDefectIssue.IssueStatus.RECEIVED)
+                .riskLevel(request.getRiskLevel())
                 .memo(request.getMemo())
                 .build();
 
         ResidencyDefectIssue saved = residencyDefectIssueRepository.save(issue);
+        appendTimelineIfNotDuplicate(saved, ResidencyIssueTimeline.EventType.CREATED, null);
         return toResidencyDefectIssueResponse(saved);
     }
 
@@ -275,18 +280,29 @@ public class ResidencyService {
             throw new IllegalArgumentException("권한이 없습니다.");
         }
 
+        ResidencyDefectIssue.IssueStatus previousStatus = issue.getStatus();
+        ResidencyDefectIssue.IssueStatus nextStatus = request.getStatus() != null ? request.getStatus() : issue.getStatus();
+
         issue = ResidencyDefectIssue.builder()
                 .id(issue.getId())
                 .user(issue.getUser())
-                .title(request.getTitle())
-                .imageUrl(request.getImageUrl())
-                .issueDate(request.getIssueDate())
-                .status(request.getStatus() != null ? request.getStatus() : issue.getStatus())
-                .memo(request.getMemo())
+                .title(request.getTitle() != null ? request.getTitle() : issue.getTitle())
+                .imageUrl(request.getImageUrl() != null ? request.getImageUrl() : issue.getImageUrl())
+                .issueDate(request.getIssueDate() != null ? request.getIssueDate() : issue.getIssueDate())
+                .status(nextStatus)
+                .riskLevel(request.getRiskLevel() != null ? request.getRiskLevel() : issue.getRiskLevel())
+                .lastNotifiedAt(issue.getLastNotifiedAt())
+                .memo(request.getMemo() != null ? request.getMemo() : issue.getMemo())
                 .createdAt(issue.getCreatedAt())
                 .build();
 
         ResidencyDefectIssue saved = residencyDefectIssueRepository.save(issue);
+
+        if (previousStatus != ResidencyDefectIssue.IssueStatus.COMPLETED
+                && saved.getStatus() == ResidencyDefectIssue.IssueStatus.COMPLETED) {
+            appendTimelineIfNotDuplicate(saved, ResidencyIssueTimeline.EventType.COMPLETED, null);
+        }
+
         return toResidencyDefectIssueResponse(saved);
     }
 
@@ -308,7 +324,148 @@ public class ResidencyService {
                 .imageUrl(issue.getImageUrl())
                 .issueDate(issue.getIssueDate())
                 .status(issue.getStatus())
+                .riskLevel(issue.getRiskLevel())
+                .lastNotifiedAt(issue.getLastNotifiedAt())
                 .memo(issue.getMemo())
+                .build();
+    }
+
+    // ========== Defect Issue Timelines ==========
+    public List<ResidencyIssueTimelineResponse> getDefectIssueTimelines(Integer userNo, Long defectIssueId) {
+        ResidencyDefectIssue issue = residencyDefectIssueRepository.findById(defectIssueId)
+                .orElseThrow(() -> new IllegalArgumentException("이슈를 찾을 수 없습니다."));
+
+        if (!issue.getUser().getUserNo().equals(userNo)) {
+            throw new IllegalArgumentException("권한이 없습니다.");
+        }
+
+        List<ResidencyIssueTimeline> timelines = residencyIssueTimelineRepository
+                .findByDefectIssue_IdOrderByCreatedAtDescIdDesc(defectIssueId);
+
+        return timelines.stream()
+                .map(this::toResidencyIssueTimelineResponse)
+                .collect(Collectors.toList());
+    }
+
+    public ResidencyIssueTimelineResponse createDefectIssueTimeline(Integer userNo, Long defectIssueId, ResidencyIssueTimelineRequest request) {
+        if (request.getEventType() == null) {
+            throw new IllegalArgumentException("eventType은 필수입니다.");
+        }
+
+        ResidencyDefectIssue issue = residencyDefectIssueRepository.findById(defectIssueId)
+                .orElseThrow(() -> new IllegalArgumentException("이슈를 찾을 수 없습니다."));
+
+        if (!issue.getUser().getUserNo().equals(userNo)) {
+            throw new IllegalArgumentException("권한이 없습니다.");
+        }
+
+        if (request.getEventType() == ResidencyIssueTimeline.EventType.NOTIFIED) {
+            issue.updateLastNotifiedAt(LocalDateTime.now());
+            residencyDefectIssueRepository.save(issue);
+        }
+
+        ResidencyIssueTimeline created = appendTimelineIfNotDuplicate(issue, request.getEventType(), request.getNote());
+        if (created == null) {
+            // 연속 중복인 경우: 마지막 이벤트를 그대로 반환
+            ResidencyIssueTimeline last = residencyIssueTimelineRepository
+                    .findTopByDefectIssue_IdOrderByCreatedAtDescIdDesc(defectIssueId)
+                    .orElseThrow(() -> new IllegalArgumentException("타임라인을 생성할 수 없습니다."));
+            return toResidencyIssueTimelineResponse(last);
+        }
+
+        return toResidencyIssueTimelineResponse(created);
+    }
+
+    private ResidencyIssueTimelineResponse toResidencyIssueTimelineResponse(ResidencyIssueTimeline timeline) {
+        return ResidencyIssueTimelineResponse.builder()
+                .id(timeline.getId())
+                .defectIssueId(timeline.getDefectIssue().getId())
+                .eventType(timeline.getEventType())
+                .note(timeline.getNote())
+                .createdAt(timeline.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * 동일 이슈에 대해 같은 eventType이 "연속"으로 중복 저장되지 않게 방지.
+     * (마지막 이벤트가 동일하면 skip)
+     *
+     * @return 생성된 타임라인(스킵되면 null)
+     */
+    private ResidencyIssueTimeline appendTimelineIfNotDuplicate(ResidencyDefectIssue issue,
+                                                               ResidencyIssueTimeline.EventType eventType,
+                                                               String note) {
+        Optional<ResidencyIssueTimeline> last = residencyIssueTimelineRepository
+                .findTopByDefectIssue_IdOrderByCreatedAtDescIdDesc(issue.getId());
+
+        if (last.isPresent() && last.get().getEventType() == eventType) {
+            return null;
+        }
+
+        ResidencyIssueTimeline timeline = ResidencyIssueTimeline.builder()
+                .defectIssue(issue)
+                .eventType(eventType)
+                .note(note)
+                .build();
+
+        return residencyIssueTimelineRepository.save(timeline);
+    }
+
+    // ========== Agreement Records ==========
+    public List<ResidencyAgreementRecordResponse> getAgreementRecords(Integer userNo, Integer limit) {
+        int pageSize = (limit == null || limit <= 0) ? 10 : Math.min(limit, 50);
+        List<ResidencyAgreementRecord> records = residencyAgreementRecordRepository
+                .findRecentByUserNo(userNo, PageRequest.of(0, pageSize));
+
+        return records.stream()
+                .map(this::toResidencyAgreementRecordResponse)
+                .collect(Collectors.toList());
+    }
+
+    public ResidencyAgreementRecordResponse createAgreementRecord(Integer userNo, ResidencyAgreementRecordRequest request) {
+        User user = userRepository.findById(userNo)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+        if (request.getCounterpart() == null) {
+            throw new IllegalArgumentException("counterpart는 필수입니다.");
+        }
+        if (request.getCommunicationType() == null) {
+            throw new IllegalArgumentException("communicationType은 필수입니다.");
+        }
+        if (request.getSummary() == null || request.getSummary().trim().isEmpty()) {
+            throw new IllegalArgumentException("summary는 필수입니다.");
+        }
+
+        ResidencyDefectIssue linkedIssue = null;
+        if (request.getDefectIssueId() != null) {
+            ResidencyDefectIssue issue = residencyDefectIssueRepository.findById(request.getDefectIssueId())
+                    .orElseThrow(() -> new IllegalArgumentException("연결할 이슈를 찾을 수 없습니다."));
+            if (!issue.getUser().getUserNo().equals(userNo)) {
+                throw new IllegalArgumentException("권한이 없습니다.");
+            }
+            linkedIssue = issue;
+        }
+
+        ResidencyAgreementRecord record = ResidencyAgreementRecord.builder()
+                .user(user)
+                .defectIssue(linkedIssue)
+                .counterpart(request.getCounterpart())
+                .communicationType(request.getCommunicationType())
+                .summary(request.getSummary().trim())
+                .build();
+
+        ResidencyAgreementRecord saved = residencyAgreementRecordRepository.save(record);
+        return toResidencyAgreementRecordResponse(saved);
+    }
+
+    private ResidencyAgreementRecordResponse toResidencyAgreementRecordResponse(ResidencyAgreementRecord record) {
+        return ResidencyAgreementRecordResponse.builder()
+                .id(record.getId())
+                .defectIssueId(record.getDefectIssue() != null ? record.getDefectIssue().getId() : null)
+                .counterpart(record.getCounterpart())
+                .communicationType(record.getCommunicationType())
+                .summary(record.getSummary())
+                .createdAt(record.getCreatedAt())
                 .build();
     }
 }

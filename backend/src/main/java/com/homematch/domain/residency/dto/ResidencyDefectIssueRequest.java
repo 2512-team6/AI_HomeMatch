@@ -17,5 +17,6 @@ public class ResidencyDefectIssueRequest {
     private String imageUrl;
     private LocalDate issueDate;
     private ResidencyDefectIssue.IssueStatus status;
+    private ResidencyDefectIssue.RiskLevel riskLevel;
     private String memo;
 }
