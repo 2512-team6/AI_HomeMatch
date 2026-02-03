@@ -1,12 +1,9 @@
 ipykernel
-pytesseract
-pillow
 pymupdf
 pymysql
 python-dotenv
 chromadb
 sentence-transformers
-ollama
 langchain-core
 langchain-text-splitters
 groq
@@ -17,7 +14,6 @@ fastapi
 uvicorn[standard]
 python-multipart
 pydantic
-
 
 easyocr
 numpy
