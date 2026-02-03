@@ -2,7 +2,7 @@
 /* =========================================================
  * 1. 사용자 정보 테이블
  * ========================================================= */
-create table users (
+create table IF NOT EXISTS users (
     user_no int auto_increment primary key,
     email varchar(255) unique not null,
     password varchar(255) not null,
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS entry_status_records (
 /* =========================================================
  * 4. 퇴실 전 해야 할 필수 항목 관리 테이블
  * ========================================================= */
-CREATE TABLE moveout_checklists (
+CREATE TABLE IF NOT EXISTS moveout_checklists (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 체크리스트 항목 ID
     user_id INT NOT NULL,                           -- 사용자 ID
     checklist_type VARCHAR(20) NOT NULL,            -- 체크리스트 유형 (MOVE_OUT, RESTORATION)
@@ -91,7 +91,7 @@ CREATE TABLE moveout_checklists (
 /* =========================================================
  * 5. 보증금 정산 / 반환 상태 관리 테이블
  * ========================================================= */
-CREATE TABLE deposit_managements (
+CREATE TABLE IF NOT EXISTS deposit_managements (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 보증금 관리 ID
     user_id INT NOT NULL,                           -- 사용자 ID
     deposit_amount DECIMAL(15,2) NOT NULL,          -- 보증금 총액
@@ -117,7 +117,7 @@ CREATE TABLE deposit_managements (
 /* =========================================================
  * 6. 퇴실 직전 집 상태 증빙용 사진 테이블
  * ========================================================= */
-CREATE TABLE moveout_photos (
+CREATE TABLE IF NOT EXISTS moveout_photos (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     photo_url VARCHAR(500) NOT NULL,
@@ -134,7 +134,7 @@ CREATE TABLE moveout_photos (
 /* =========================================================
  * 7. 보증금, 시설 훼손 등 분쟁 발생 시 기록
  * ========================================================= */
-CREATE TABLE dispute_records (
+CREATE TABLE IF NOT EXISTS dispute_records (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 분쟁 기록 ID
     user_id INT NOT NULL,                           -- 사용자 ID
     dispute_type VARCHAR(50) NOT NULL,              -- 분쟁 유형
@@ -157,7 +157,7 @@ CREATE TABLE dispute_records (
 /* =========================================================
  * 8. 내용증명, 지급명령 등 보증금 관련 이벤트 로그
  * ========================================================= */
-CREATE TABLE deposit_return_history (
+CREATE TABLE IF NOT EXISTS deposit_return_history (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,          -- 이력 ID
     deposit_management_id BIGINT NOT NULL,          -- 보증금 관리 ID
     action_type VARCHAR(50) NOT NULL,               -- 액션 유형 (NOTICE_SENT 등)
@@ -197,60 +197,60 @@ CREATE TABLE IF NOT EXISTS housing_contracts (
  * 10. 주거비 기본 설정 (1인 1개)
  * ========================================================= */
 CREATE TABLE IF NOT EXISTS housing_cost_settings (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL UNIQUE,
-    rent DECIMAL(15,2) NOT NULL DEFAULT 0,
-    maintenance DECIMAL(15,2) NOT NULL DEFAULT 0,
-    utilities DECIMAL(15,2) NOT NULL DEFAULT 0,
-    payment_date TINYINT NOT NULL,
-    auto_register BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
-    CHECK (payment_date BETWEEN 1 AND 31)
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,                    -- 기본키: 설정 고유 ID (자동 증가)
+    user_id INT NOT NULL UNIQUE,                             -- 사용자 ID (users 테이블 참조, 1인 1개 설정)
+    rent DECIMAL(15,2) NOT NULL DEFAULT 0,                   -- 월세/전세금 (기본값: 0원)
+    maintenance DECIMAL(15,2) NOT NULL DEFAULT 0,            -- 관리비 (기본값: 0원)
+    utilities DECIMAL(15,2) NOT NULL DEFAULT 0,              -- 공과금 (전기, 가스, 수도 등, 기본값: 0원)
+    payment_date TINYINT NOT NULL,                           -- 납부일 (1~31일 사이, 매월 주거비 납부일)
+    auto_register BOOLEAN NOT NULL DEFAULT FALSE,             -- 자동 등록 여부 (매월 자동으로 주거비 기록 생성 여부)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,          -- 생성일시 (레코드 생성 시 자동 설정)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 수정일시 (레코드 수정 시 자동 갱신)
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,  -- 사용자 삭제 시 설정도 함께 삭제
+    CHECK (payment_date BETWEEN 1 AND 31)                    -- 납부일은 1일~31일 사이만 허용
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /* =========================================================
- * 11. 주거비 기본 설정 (1인 1개)
+ * 11. 월별 주거비 기록 (사용자별 월별 주거비 내역)
  * ========================================================= */
 CREATE TABLE IF NOT EXISTS monthly_housing_records (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
-    year INT NOT NULL,
-    month TINYINT NOT NULL,
-    rent DECIMAL(15,2) NOT NULL DEFAULT 0,
-    maintenance DECIMAL(15,2) NOT NULL DEFAULT 0,
-    utilities DECIMAL(15,2) NOT NULL DEFAULT 0,
-    payment_date TINYINT NOT NULL,
-    paid BOOLEAN NOT NULL DEFAULT FALSE,
-    paid_at TIMESTAMP NULL,
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
-    UNIQUE KEY uk_user_year_month (user_id, year, month),
-    INDEX idx_user_year_month (user_id, year, month),
-    CHECK (month BETWEEN 1 AND 12),
-    CHECK (payment_date BETWEEN 1 AND 31)
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,                    -- 기본키: 기록 고유 ID (자동 증가)
+    user_id INT NOT NULL,                                     -- 사용자 ID (users 테이블 참조)
+    year INT NOT NULL,                                        -- 연도 (예: 2024)
+    month TINYINT NOT NULL,                                   -- 월 (1~12, CHECK 제약으로 검증)
+    rent DECIMAL(15,2) NOT NULL DEFAULT 0,                   -- 월세/전세금 (기본값: 0원)
+    maintenance DECIMAL(15,2) NOT NULL DEFAULT 0,            -- 관리비 (기본값: 0원)
+    utilities DECIMAL(15,2) NOT NULL DEFAULT 0,              -- 공과금 (전기, 가스, 수도 등, 기본값: 0원)
+    payment_date TINYINT NOT NULL,                           -- 납부일 (1~31일 사이, CHECK 제약으로 검증)
+    paid BOOLEAN NOT NULL DEFAULT FALSE,                      -- 납부 여부 (기본값: 미납부)
+    paid_at TIMESTAMP NULL,                                   -- 납부 일시 (납부 완료 시 기록)
+    notes TEXT,                                               -- 메모/비고 (추가 정보 기록용)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,          -- 생성일시 (레코드 생성 시 자동 설정)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 수정일시 (레코드 수정 시 자동 갱신)
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,  -- 사용자 삭제 시 기록도 함께 삭제
+    UNIQUE KEY uk_user_year_month (user_id, year, month),    -- 사용자별 연도+월 조합은 유일 (중복 방지)
+    INDEX idx_user_year_month (user_id, year, month),        -- 사용자별 연도+월 조회 성능 최적화 인덱스
+    CHECK (month BETWEEN 1 AND 12),                          -- 월은 1월~12월만 허용
+    CHECK (payment_date BETWEEN 1 AND 31)                     -- 납부일은 1일~31일만 허용
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /* =========================================================
- * 12. 입주 상태 사진 기록 테이블
+ * 12. 입주 상태 사진 기록 테이블 (하자 신고/입주 상태 기록)
  * ========================================================= */
 CREATE TABLE IF NOT EXISTS residency_defect_issues (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
-    title VARCHAR(200) NOT NULL,
-    image_url MEDIUMTEXT NOT NULL,
-    issue_date DATE NOT NULL,
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,                    -- 기본키: 이슈 고유 ID (자동 증가)
+    user_id INT NOT NULL,                                     -- 사용자 ID (users 테이블 참조)
+    title VARCHAR(200) NOT NULL,                              -- 제목 (하자/이슈 제목, 최대 200자)
+    image_url MEDIUMTEXT NOT NULL,                            -- 이미지 URL (하자 사진 경로, MEDIUMTEXT 타입)
+    issue_date DATE NOT NULL,                                 -- 이슈 발생일/신고일 (날짜)
     status ENUM ('RECEIVED','IN_PROGRESS','COMPLETED','REJECTED')
-        NOT NULL DEFAULT 'RECEIVED',
-    memo TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,
-    INDEX idx_defect_issue_user_status (user_id, status),
-    INDEX idx_defect_issue_date (issue_date)
+        NOT NULL DEFAULT 'RECEIVED',                          -- 처리 상태 (접수/진행중/완료/거부, 기본값: 접수)
+    memo TEXT,                                                -- 메모 (추가 설명/내용)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,          -- 생성일시 (레코드 생성 시 자동 설정)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 수정일시 (레코드 수정 시 자동 갱신)
+    FOREIGN KEY (user_id) REFERENCES users(user_no) ON DELETE CASCADE,  -- 사용자 삭제 시 이슈도 함께 삭제
+    INDEX idx_defect_issue_user_status (user_id, status),    -- 사용자별 상태 조회 성능 최적화 인덱스
+    INDEX idx_defect_issue_date (issue_date)                  -- 날짜별 조회 성능 최적화 인덱스
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -259,30 +259,150 @@ CREATE TABLE IF NOT EXISTS residency_defect_issues (
  * 13. 채팅 세션 (사용자별 대화 세션)
  * ========================================================= */
 CREATE TABLE IF NOT EXISTS chat_sessions (
-    session_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_no INT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    session_id INT AUTO_INCREMENT PRIMARY KEY,                -- 기본키: 세션 고유 ID (자동 증가)
+    user_no INT NOT NULL,                                     -- 사용자 번호 (users 테이블 참조)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,            -- 생성일시 (세션 생성 시 자동 설정)
     CONSTRAINT fk_chat_sessions_user
     FOREIGN KEY (user_no)
         REFERENCES users(user_no)
-        ON DELETE CASCADE,
-    INDEX idx_user_no (user_no)
+        ON DELETE CASCADE,                                    -- 사용자 삭제 시 세션도 함께 삭제
+    INDEX idx_user_no (user_no)                               -- 사용자별 세션 조회 성능 최적화 인덱스
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 /* =========================================================
- * 14. 세션에 속한 메시지들
+ * 14. 세션에 속한 메시지들 (채팅 메시지)
  * ========================================================= */
 CREATE TABLE IF NOT EXISTS chat_messages (
-    message_id INT AUTO_INCREMENT PRIMARY KEY,
-    session_id INT NOT NULL,
-    role VARCHAR(20) NOT NULL,
-    content TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    message_id INT AUTO_INCREMENT PRIMARY KEY,                -- 기본키: 메시지 고유 ID (자동 증가)
+    session_id INT NOT NULL,                                  -- 세션 ID (chat_sessions 테이블 참조)
+    role VARCHAR(20) NOT NULL,                                -- 역할 (예: 'user', 'assistant', 'system' 등)
+    content TEXT NOT NULL,                                    -- 메시지 내용 (채팅 메시지 본문)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,            -- 생성일시 (메시지 생성 시 자동 설정)
     CONSTRAINT fk_chat_messages_session
     FOREIGN KEY (session_id)
         REFERENCES chat_sessions(session_id)
-        ON DELETE CASCADE,
-    INDEX idx_session_id (session_id),
-    INDEX idx_created_at (created_at)
+        ON DELETE CASCADE,                                    -- 세션 삭제 시 메시지도 함께 삭제
+    INDEX idx_session_id (session_id),                        -- 세션별 메시지 조회 성능 최적화 인덱스
+    INDEX idx_created_at (created_at)                         -- 시간순 정렬 조회 성능 최적화 인덱스
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+/* =========================================================
+ * 15. 등기부등본 분석 결과 저장 테이블 (보관/삭제 포함)
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS deed_analysis_documents (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+
+  user_id INT NOT NULL,
+
+  source_filename VARCHAR(255) NULL,
+  source_mime_type VARCHAR(100) NULL,
+
+  extracted_text LONGTEXT NULL,
+
+  structured_json LONGTEXT NULL,
+  sections_json LONGTEXT NULL,
+
+  risk_flags_json LONGTEXT NULL,
+  check_items_json LONGTEXT NULL,
+  explanation LONGTEXT NULL,
+
+  archived TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  CONSTRAINT fk_deed_doc_user FOREIGN KEY (user_id) REFERENCES users(user_no)
+    ON DELETE CASCADE
+);
+
+CREATE INDEX idx_deed_doc_user_created ON deed_analysis_documents (user_id, created_at);
+CREATE INDEX idx_deed_doc_user_archived ON deed_analysis_documents (user_id, archived);
+CREATE INDEX idx_deed_doc_deleted_at ON deed_analysis_documents (deleted_at);
+
+
+/* =========================================================
+ * 16. 문서처리 동의 사항 저장 테이블
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS user_consents (
+    consent_id INT AUTO_INCREMENT PRIMARY KEY,   -- 동의 이력 ID
+    user_no INT NOT NULL,                         -- 사용자 번호 (users.user_no FK)
+
+    consent_type VARCHAR(50) NOT NULL,            -- 동의 유형 (TERMS, PRIVACY, DATA_STORE, DISCLAIMER)
+    consent_content TEXT NOT NULL,                -- 동의 문서 내용
+    content_hash CHAR(64) NOT NULL,               -- 동의 문서 변경 여부 확인용 값 (SHA-256)
+
+    version VARCHAR(20) NOT NULL,                 -- 약관/동의 버전
+
+    agreed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- 동의 시점
+    withdrawn_at DATETIME NULL,                   -- 철회 시점 (NULL = 현재 유효)
+
+    CONSTRAINT fk_user_consents_user
+        FOREIGN KEY (user_no)
+        REFERENCES users(user_no)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+/* =========================================================
+ * 매물찾기 더미 데이터 넣기
+ * ========================================================= */
+INSERT INTO listings (
+    owner, title, address, lat, lng, price_deposit, lease_type, price_rent, m_cost, 
+    area_m2, built_year, floor, floor_building, rooms, bathrooms, parking, move_in_date
+) VALUES
+('홍길동', '강남역 도보 5분 원룸', '서울시 강남구 역삼동 123-45', 37.5000, 127.0360, 250000000, '전세', NULL, 50000, 33.00, 2020, 5, 10, 1, 1, TRUE, '2024-07-01'),
+('김철수', '반포동 고급 아파트', '서울시 서초구 반포동 456-78', 37.5040, 127.0020, 100000000, '월세', 1000000, 150000, 84.00, 2015, 15, 20, 3, 2, TRUE, '2024-08-01'),
+('이영희', '여의도 오피스텔', '서울시 영등포구 여의도동 789-12', 37.5260, 126.9250, 180000000, '전세', NULL, 80000, 45.00, 2018, 12, 15, 2, 1, FALSE, '2024-06-15'),
+('박민수', '홍대입구 근처 원룸', '서울시 마포구 홍익동 234-56', 37.5560, 126.9230, 150000000, '월세', 800000, 60000, 28.00, 2019, 3, 5, 1, 1, TRUE, '2024-07-20'),
+('최지영', '잠실 신축 아파트', '서울시 송파구 잠실동 345-67', 37.5130, 127.1020, 300000000, '전세', NULL, 200000, 95.00, 2022, 8, 12, 4, 2, TRUE, '2024-09-01'),
+('오세훈', '구로디지털단지 인근 원룸', '서울시 구로구 구로동 1123-4', 37.4843211, 126.8976543, 120000000, '월세', 650000, 50000, 29.50, 2018, 6, 12, 1, 1, FALSE, '2024-07-05');
+
+/* =========================================================
+ * 17. 계약서 기본정보 테이블
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS contracts (
+  contract_id        BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, -- 문서 ID
+  user_id            BIGINT UNSIGNED NOT NULL,                             -- 사용자 ID
+  file_name          VARCHAR(255) NULL,                                    -- 파일 명 (현재 null 가능)
+  mime_type          VARCHAR(100) NULL,                                    -- MIME 타입
+  file_size_bytes    BIGINT NULL,                                          -- 파일 크기
+  uploaded_at        DATETIME NULL,                                        -- 업로드 일시
+  contract_alias     VARCHAR(100) NOT NULL,                                -- 계약서 별명 (테스트 입력)
+  special_term_count INT NOT NULL DEFAULT 0,                               -- 특약사항 갯수
+  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                     ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_contracts_user_id (user_id),
+  KEY idx_contracts_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+/* =========================================================
+ * 18. 특약사항 분석 결과 테이블
+ * ========================================================= */
+CREATE TABLE IF NOT EXISTS clause_analysis_results (
+  clause_analysis_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  contract_id        BIGINT UNSIGNED NOT NULL,
+  clause_index       INT NOT NULL,                     
+  clause_text        LONGTEXT NOT NULL,                
+  level              ENUM('SAFE','NEEDS_UNDERSTANDING','NEEDS_REVIEW') NOT NULL,
+  conclusion         TEXT NULL,
+  risk_points        JSON NULL,            
+  mediation_summaries TEXT NULL,            
+  mediation_case_ids  JSON NULL,            
+  precedent_summaries TEXT NULL,            
+  precedent_case_ids  JSON NULL,            
+  precedent_evidence  JSON NULL,            
+  law_summaries       TEXT NULL,            
+  law_ids             JSON NULL,           
+  recommended_clause_text LONGTEXT NULL,
+  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY ux_clause_contract_idx (contract_id, clause_index),
+  KEY idx_clause_contract_id (contract_id),
+  KEY idx_clause_level (level),
+  CONSTRAINT fk_clause_contract
+    FOREIGN KEY (contract_id) REFERENCES contracts(contract_id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

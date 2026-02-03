@@ -245,7 +245,7 @@ export default function LandingPage() {
               </p>
             </Link>
 
-            {/* 계약서 검증 - 서브 아이콘 버튼 */}
+            {/* 계약서 점검 - 서브 아이콘 버튼 */}
             <Link
               to="/contract/review"
               className="
@@ -273,7 +273,7 @@ export default function LandingPage() {
 
               {/* 텍스트 */}
               <h3 className="text-2xl font-bold text-indigo-600">
-                계약서 검증
+                계약서 점검
               </h3>
               <p className="text-base text-gray-600 text-center leading-relaxed">
                 이미 계약서가 있다면<br />
@@ -304,7 +304,7 @@ export default function LandingPage() {
               <Lightbulb className="w-12 h-12 text-primary-600 mb-4" />
               <h3 className="text-xl font-bold text-gray-900 mb-2">정보 불균형</h3>
               <p className="text-gray-600">
-                중개사의 설명과 실제 계약 내용의 차이, Home'Scan이 명확하게 비교하고 검증합니다.
+                중개사의 설명과 실제 계약 내용의 차이, Home'Scan이 명확하게 비교하고 점검합니다.
               </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-6">
@@ -415,7 +415,7 @@ export default function LandingPage() {
             </div>
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <CheckCircle className="w-12 h-12 text-primary-600 mb-4" />
-              <h3 className="text-xl font-bold text-gray-900 mb-2">중개사 설명 검증</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">중개사 설명 점검</h3>
               <p className="text-gray-600">
                 중개사의 구두 설명과 계약서의 실제 내용을 대조하여 허위 정보를 방지합니다.
               </p>
@@ -885,7 +885,7 @@ export default function LandingPage() {
                     <li>중요한 법률 문제나 재산 관련 결정은 반드시 전문가와 상담해야 합니다.</li>
                     <li>서비스 이용으로 인한 모든 결과에 대한 책임은 이용자에게 있습니다.</li>
                   </ul>
-                  <p>2. 이용자는 제공된 정보를 검증하고, 필요시 추가적인 조사를 수행할 책임이 있습니다.</p>
+                  <p>2. 이용자는 제공된 정보를 점검하고, 필요시 추가적인 조사를 수행할 책임이 있습니다.</p>
                 </div>
               </div>
 

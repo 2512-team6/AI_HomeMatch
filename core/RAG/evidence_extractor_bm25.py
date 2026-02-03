@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Iterable, Set
 
 from precedent_repo import PrecedentRecord
 
@@ -18,6 +18,64 @@ _WORD_RE = re.compile(r"[0-9A-Za-z가-힣\u4e00-\u9fff·]+")
 _HTML_BR_RE = re.compile(r"(?i)<br\s*/?>")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"[ \t]+")
+
+
+# -----------------------------
+# Stopwords (minimal, conservative)
+# - 너무 공격적으로 넣으면 근거가 안 뽑히는 케이스가 생길 수 있어 "보수적으로" 시작
+# - 필요하면 운영하면서 추가해도 됨
+# -----------------------------
+_STOPWORDS: Set[str] = {
+    # 일반 기능어/접속/지시
+    "및",
+    "또는",
+    "등",
+    "의",
+    "에",
+    "를",
+    "을",
+    "은",
+    "는",
+    "이",
+    "가",
+    "과",
+    "와",
+    "으로",
+    "로",
+    "에서",
+    "에게",
+    "대하여",
+    "대한",
+    "관련",
+    "관하여",
+    "따라",
+    "따른",
+    "경우",
+    "때",
+    "사실",
+    "이유",
+    "내용",
+    "사항",
+    "규정",
+    "조항",
+    "법",
+    "법령",
+    # 임대차/계약 문서에서 과도하게 흔한 단어(너무 많이 넣지 말고 핵심만)
+    "임대차",
+    "계약",
+    "임대인",
+    "임차인",
+    "보증금",
+    "차임",
+    "월세",
+    "전세",
+    "해지",
+    "갱신",
+    "반환",
+    "지급",
+    "부담",
+    "의무",
+}
 
 
 def _strip_html(text: str) -> str:
@@ -37,13 +95,31 @@ def _normalize_text(text: str) -> str:
     return t.strip()
 
 
+def _filter_tokens(tokens: Iterable[str]) -> List[str]:
+    out: List[str] = []
+    for w in tokens:
+        ww = (w or "").strip().lower()
+        if not ww:
+            continue
+        # 너무 짧은 토큰 제거(예: 1글자)
+        if len(ww) <= 1:
+            continue
+        # stopword 제거
+        if ww in _STOPWORDS:
+            continue
+        out.append(ww)
+    return out
+
+
 def tokenize_ko(text: str) -> List[str]:
     """
     아주 단순 토크나이저.
     - 한국어/영문/숫자/한자/· 덩어리 기준
+    - stopwords + 1글자 토큰 제거로 노이즈 감소
     """
     t = _normalize_text(_strip_html(text))
-    return _WORD_RE.findall(t.lower())
+    toks = _WORD_RE.findall(t.lower())
+    return _filter_tokens(toks)
 
 
 def _merge_lines_to_paragraphs(
@@ -208,10 +284,20 @@ def extract_evidence_bm25(
     *,
     top_n_per_case: int = 3,
     min_paragraph_chars: int = 40,
+    min_overlap: int = 2,  # ✅ 겹치는 토큰이 최소 이 개수 이상일 때만 증거 후보로
 ) -> Dict[str, List[EvidenceSpan]]:
     q_tokens = tokenize_ko(clause_text)
     if not q_tokens:
         return {}
+
+    # 쿼리가 너무 짧으면 overlap 기준을 완화(증거가 아예 0이 되는 걸 방지)
+    # 예: stopwords 제거 후 토큰이 1~2개 남는 케이스
+    if len(q_tokens) <= 2:
+        eff_min_overlap = 1
+    else:
+        eff_min_overlap = min_overlap
+
+    q_set = set(q_tokens)
 
     out: Dict[str, List[EvidenceSpan]] = {}
 
@@ -227,9 +313,21 @@ def extract_evidence_bm25(
 
         scored: List[Tuple[int, float]] = []
         for i in range(idx.N):
+            doc_toks = idx.doc_tokens[i]
+            if not doc_toks:
+                continue
+
+            # ✅ overlap(교집합) 최소 조건
+            overlap = len(q_set.intersection(doc_toks))
+            if overlap < eff_min_overlap:
+                continue
+
             s = idx.score(q_tokens, i)
             if s > 0:
                 scored.append((i, s))
+
+        if not scored:
+            continue  # ✅ 이 판례에서는 유효 근거 없음
 
         scored.sort(key=lambda x: x[1], reverse=True)
         top = scored[:top_n_per_case]

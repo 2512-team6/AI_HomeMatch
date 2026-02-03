@@ -3,9 +3,18 @@ server:
 
 spring:
   datasource:
-    url:  ${DB_URL}
-    username:  ${DB_USER}
-    password:  ${DB_PASSWORD}
+    # DB 연결은 "환경변수 우선"으로 처리합니다.
+    #
+    # ✅ 외부 DB(클라우드타입 외부 도메인) 기본값으로 설정
+    #   - host: svc.sel3.cloudtype.app
+    #   - port: 31740
+    #   - (주의) 외부 포트는 재배포 시 바뀔 수 있고, 프로젝트 설정에서 TCP 외부 접속 허용 필요
+    #
+    # 가장 간단한 방법은 DB_URL을 통째로 주는 것입니다:
+    #   DB_URL=jdbc:mariadb://svc.sel3.cloudtype.app:31740/homematch
+    url: ${DB_URL:jdbc:mariadb://svc.sel3.cloudtype.app:31740/homematch}
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:123}
     driver-class-name: org.mariadb.jdbc.Driver
 
   jpa:

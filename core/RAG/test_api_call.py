@@ -7,18 +7,24 @@ import requests
 API_URL = "http://127.0.0.1:8000/analyze"
 
 REQUIRED_KEYS = [
+    "level",
+    "color",
     "conclusion",
     "risk_points",
-    "law_basis",
-    "precedent_basis",
     "mediation_cases",
-    "recommended_clauses",
+    "mediation_case_ids",
+    "precedents",
+    "precedent_ids",
+    "laws",
+    "law_ids",
+    "recommendations",
 ]
 
 
 def main() -> None:
-    clause_text = """임차인이 차임을 2기 이상 연체한 경우, 임대인은 별도의 최고 없이 계약을 해지할 수 있다.""".strip()
-
+    clause_text = """임차인은 매월 약정한 기일에 차임을 지급하여야 한다""".strip()
+    # 임차인은 매월 약정한 기일에 차임을 지급하여야 한다
+    # 임차인이 차임을 2기 이상 연체한 경우, 임대인은 별도의 최고 없이 계약을 해지할 수 있다.
     payload = {
         "clause_text": clause_text,
         "rag_params": None,

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import base64
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from .ocr_service import extract_text, get_detection_regions
+from .ocr_service import extract_text
 from .parser import parse_registry_text, split_registry_sections
 from .pdf_utils import is_pdf, pdf_to_images
 from .risk_analysis import build_check_items, build_risk_flags, explain_risk
@@ -37,13 +36,8 @@ async def upload(
         for img_bytes in images:
             all_texts.append(extract_text(img_bytes))
         extracted_text = "\n\n--- 페이지 구분 ---\n\n".join(all_texts)
-        # 시각화는 1페이지 기준
-        regions, _ = get_detection_regions(images[0])
-        image_data_url = "data:image/png;base64," + base64.b64encode(images[0]).decode("utf-8")
     else:
         extracted_text = extract_text(raw)
-        regions, _ = get_detection_regions(raw)
-        image_data_url = "data:image/png;base64," + base64.b64encode(raw).decode("utf-8")
 
     structured = parse_registry_text(extracted_text)
     sections = split_registry_sections(extracted_text)
@@ -54,8 +48,6 @@ async def upload(
         "extracted_text": extracted_text,
         "parsed_data": structured,
         "sections": sections,
-        "regions": regions,
-        "image_data_url": image_data_url,
     }
 
 

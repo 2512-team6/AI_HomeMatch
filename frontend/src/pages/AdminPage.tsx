@@ -132,13 +132,13 @@ export default function AdminPage() {
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">계약서 검증</p>
+                <p className="text-sm text-gray-600 mb-1">계약서 점검</p>
                 <p className="text-3xl font-bold text-gray-900">{stats.totalContracts.toLocaleString()}</p>
               </div>
               <FileText className="w-12 h-12 text-purple-500" />
             </div>
             <div className="mt-4 flex items-center text-sm">
-              <span className="text-gray-600">전체 검증 건수</span>
+              <span className="text-gray-600">전체 점검 건수</span>
             </div>
           </div>
 
@@ -265,7 +265,7 @@ export default function AdminPage() {
                       data={[
                         { name: '사용자', value: stats.totalUsers },
                         { name: '매물', value: stats.totalListings },
-                        { name: '계약서 검증', value: stats.totalContracts },
+                        { name: '계약서 점검', value: stats.totalContracts },
                         { name: '최근 가입자', value: stats.recentSignups }
                       ]}
                       cx="50%"
@@ -279,7 +279,7 @@ export default function AdminPage() {
                       {[
                         { name: '사용자', value: stats.totalUsers },
                         { name: '매물', value: stats.totalListings },
-                        { name: '계약서 검증', value: stats.totalContracts },
+                        { name: '계약서 점검', value: stats.totalContracts },
                         { name: '최근 가입자', value: stats.recentSignups }
                       ].map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -300,7 +300,7 @@ export default function AdminPage() {
                 </div>
                 <div className="flex items-center space-x-3">
                   <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS[2] }}></div>
-                  <span className="text-gray-700">계약서 검증: {stats.totalContracts.toLocaleString()}건</span>
+                  <span className="text-gray-700">계약서 점검: {stats.totalContracts.toLocaleString()}건</span>
                 </div>
                 <div className="flex items-center space-x-3">
                   <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS[3] }}></div>

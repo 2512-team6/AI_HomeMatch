@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Upload,
   ArrowLeft,
@@ -12,9 +13,8 @@ import {
   Loader2,
 } from 'lucide-react'
 
-// 개발 시 Vite 프록시 사용: /api/deed → localhost:8000 (core/RAG/api_server.py 실행 필요)
-const DEED_API_URL = import.meta.env.VITE_DEED_API_URL ?? ''
-const DEED_BASE = DEED_API_URL || '/api/deed'
+// 등기부 분석 결과는 Java 백엔드(8080)에 저장합니다.
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8080'
 
 type CheckStatus = 'ok' | 'caution' | 'danger' | 'pending'
 
@@ -27,35 +27,32 @@ interface CheckItem {
 }
 
 const CHECK_ITEMS_TEMPLATE: CheckItem[] = [
-  { id: 1, question: '이 사람이 진짜 주인인가?', confirmLabel: '소유자 일치 여부', status: 'pending', summary: '' },
-  { id: 2, question: '보증금보다 먼저 가져갈 권리가 있는가?', confirmLabel: '근저당·가압류 등 권리 존재', status: 'pending', summary: '' },
-  { id: 3, question: '이 집, 왜 이렇게 최근에 손바뀜 됐지?', confirmLabel: '소유권 이전 시점', status: 'pending', summary: '' },
-  { id: 4, question: '나 말고 계약 권한 있는 사람이 또 있나?', confirmLabel: '공동 소유 여부', status: 'pending', summary: '' },
-  { id: 5, question: '내 보증금은 몇 번째 순서인가?', confirmLabel: '선순위 권리 구조', status: 'pending', summary: '' },
-  { id: 6, question: '이 계약, 법적으로 특정이 되는가?', confirmLabel: '호실·목적물 특정 가능 여부', status: 'pending', summary: '' },
+  { id: 1, question: '소유자 확인', confirmLabel: '등기상 소유자 정보', status: 'pending', summary: '' },
+  { id: 2, question: '선순위 권리', confirmLabel: '근저당, 가압류 등 선순위 권리', status: 'pending', summary: '' },
+  { id: 3, question: '소유권 변동 이력', confirmLabel: '소유권 이전 시점 및 빈도', status: 'pending', summary: '' },
+  { id: 4, question: '공동 소유', confirmLabel: '공동 소유자 및 계약 동의 필요 여부', status: 'pending', summary: '' },
+  { id: 5, question: '보증금 보호', confirmLabel: '선·후순위 권리 구조', status: 'pending', summary: '' },
+  { id: 6, question: '계약 제한 사항', confirmLabel: '효력 제한, 목적물 특정 가능 여부', status: 'pending', summary: '' },
 ]
 
-interface UploadResponse {
-  document_id: number
-  extracted_text: string
-  parsed_data: Record<string, unknown>
-  sections: { pyojebu?: string; gapgu?: string; eulgu?: string }
-  regions?: Array<{ bbox: number[][]; text: string; confidence: number }>
-  image_data_url?: string
+interface DeedDocumentDetailResponse {
+  id: number
+  sourceFilename?: string
+  sourceMimeType?: string
+  archived?: boolean
+  createdAt?: string
+
+  extractedText?: string
+  structuredJson?: string
+  sectionsJson?: string
+  riskFlagsJson?: string
+  checkItemsJson?: string
+  explanation?: string
 }
 
 interface CheckItemResponse {
   status: 'ok' | 'caution' | 'danger' | 'pending'
   summary: string
-}
-
-interface RiskAnalysisResponse {
-  success: boolean
-  document_id: number
-  structured: Record<string, unknown>
-  risk_flags: string[]
-  explanation: string
-  check_items?: CheckItemResponse[]  // 6가지 질문별 답변
 }
 
 function StatusBadge({ status }: { status: CheckStatus }) {
@@ -92,17 +89,103 @@ function RiskExplanationBlocks({ text }: { text: string }) {
 }
 
 export default function DeedAnalysisPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [view, setView] = useState<'upload' | 'result'>('upload')
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkResults, setCheckResults] = useState<CheckItem[]>(CHECK_ITEMS_TEMPLATE)
-  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null)
+  const [uploadResult, setUploadResult] = useState<DeedDocumentDetailResponse | null>(null)
   const [riskExplanation, setRiskExplanation] = useState<string>('')
   const [riskFlags, setRiskFlags] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const consumedAutoOpenRef = useRef(false)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const state = location.state as { autoOpenFilePicker?: boolean } | null
+    if (view === 'upload' && !consumedAutoOpenRef.current && state?.autoOpenFilePicker) {
+      consumedAutoOpenRef.current = true
+      fileInputRef.current?.click()
+      navigate(location.pathname + location.search, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate, view])
+
+  const ensureDocumentConsent = async (options?: {
+    returnAction?: 'filePicker'
+    alertMessage?: string
+  }) => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      navigate('/login')
+      return false
+    }
+
+    const alertMessage =
+      options?.alertMessage ??
+      '계약서 및 등기부등본 업로드·분석 기능을 이용하려면, 문서 저장 및 분석 처리에 대한 사전 동의가 필요합니다. \n\n동의 페이지로 이동합니다.'
+
+    try {
+      const res = await fetch(
+        `http://localhost:8080/api/consents/required?types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (res.status === 401) {
+        navigate('/login')
+        return false
+      }
+
+      if (!res.ok) {
+        alert(alertMessage)
+        navigate(
+          `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent(
+            'v1.0'
+          )}&context=${encodeURIComponent('deed')}&next=${encodeURIComponent(location.pathname)}${
+            options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+          }`
+        )
+        return false
+      }
+      const data = (await res.json()) as { hasAll: boolean; missingTypes: string[] }
+      if (data.hasAll) return true
+
+      alert(alertMessage)
+      navigate(
+        `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}&context=${encodeURIComponent(
+          'deed'
+        )}&next=${encodeURIComponent(location.pathname)}${
+          options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+        }`
+      )
+      return false
+    } catch {
+      alert(alertMessage)
+      navigate(
+        `/consents/document?reason=required&types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}&context=${encodeURIComponent(
+          'deed'
+        )}&next=${encodeURIComponent(location.pathname)}${
+          options?.returnAction ? `&return=${encodeURIComponent(options.returnAction)}` : ''
+        }`
+      )
+      return false
+    }
+  }
+
+  const openFilePicker = async () => {
+    const ok = await ensureDocumentConsent({
+      returnAction: 'filePicker',
+    })
+    if (!ok) return
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = (e.target.files || [])[0]
     if (file) setUploadedFile(file)
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -113,48 +196,43 @@ export default function DeedAnalysisPage() {
     setError(null)
     setIsAnalyzing(true)
     try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) {
+        throw new Error('로그인이 필요합니다. 먼저 로그인해 주세요.')
+      }
+
       const form = new FormData()
       form.append('file', uploadedFile)
-      form.append('preprocess', 'doc')
-      form.append('use_llm_correction', 'false')
 
-      const uploadRes = await fetch(`${DEED_BASE}/upload`, {
+      const uploadRes = await fetch(`${BACKEND_BASE}/api/deed/documents`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         body: form,
       })
       if (!uploadRes.ok) {
         const t = await uploadRes.text()
         throw new Error(t || `업로드 실패 (${uploadRes.status})`)
       }
-      const uploadData: UploadResponse = await uploadRes.json()
-      setUploadResult(uploadData)
+      const saved: DeedDocumentDetailResponse = await uploadRes.json()
+      setUploadResult(saved)
 
-      const riskRes = await fetch(`${DEED_BASE}/documents/${uploadData.document_id}/risk-analysis`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      if (!riskRes.ok) {
-        const t = await riskRes.text()
-        throw new Error(t || `위험 분석 실패 (${riskRes.status})`)
-      }
-      const riskData: RiskAnalysisResponse = await riskRes.json()
-      setRiskFlags(riskData.risk_flags || [])
-      setRiskExplanation(riskData.explanation || '')
+      // DB에 저장된 JSON 문자열 파싱
+      const parsedRiskFlags: string[] = saved.riskFlagsJson ? JSON.parse(saved.riskFlagsJson) : []
+      const parsedCheckItems: CheckItemResponse[] = saved.checkItemsJson ? JSON.parse(saved.checkItemsJson) : []
+      setRiskFlags(parsedRiskFlags)
+      setRiskExplanation(saved.explanation || '')
 
-      // 백엔드에서 6가지 질문별 답변을 받았으면 그걸 사용, 없으면 기존 로직
-      if (riskData.check_items && riskData.check_items.length === 6) {
-        const items = CHECK_ITEMS_TEMPLATE.map((item, idx) => {
-          const checkItem = riskData.check_items![idx]
-          return {
-            ...item,
-            status: checkItem.status as CheckStatus,
-            summary: checkItem.summary,
-          }
-        })
+      if (parsedCheckItems && parsedCheckItems.length === 6) {
+        const items = CHECK_ITEMS_TEMPLATE.map((item, idx) => ({
+          ...item,
+          status: parsedCheckItems[idx].status as CheckStatus,
+          summary: parsedCheckItems[idx].summary,
+        }))
         setCheckResults(items)
       } else {
-        // 폴백: 기존 로직 (위험 신호를 순서대로 매핑)
-        const flags = riskData.risk_flags || []
+        const flags = parsedRiskFlags || []
         const items = CHECK_ITEMS_TEMPLATE.map((item, idx) => {
           const summary = flags[idx] || (flags.length > 0 ? flags[0] : '분석 완료. 아래 위험 신호 설명을 확인하세요.')
           const status: CheckStatus = flags.length > 0 ? 'caution' : 'ok'
@@ -168,7 +246,7 @@ export default function DeedAnalysisPage() {
       const isNetworkError = msg === 'Failed to fetch' || msg.includes('fetch')
       setError(
         isNetworkError
-          ? '등기 분석 서버에 연결할 수 없습니다. deed-service를 실행한 뒤 다시 시도해 주세요. (프로젝트 폴더의 deed-service에서 python main.py, 포트 8001)'
+          ? '서버에 연결할 수 없습니다. Java 백엔드(8080)와 FastAPI(8000)가 실행 중인지 확인해 주세요.'
           : msg
       )
     } finally {
@@ -209,7 +287,9 @@ export default function DeedAnalysisPage() {
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">등기부등본 이미지·PDF 업로드</h2>
             <div
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                void openFilePicker()
+              }}
               className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-primary-500 hover:bg-gray-50/50 transition-colors"
             >
               <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -223,6 +303,10 @@ export default function DeedAnalysisPage() {
                 type="file"
                 accept="image/*,.pdf,application/pdf"
                 className="hidden"
+                onClick={(e) => {
+                  // programmatic click도 버블링되므로 업로드 박스 onClick으로 전달 방지
+                  e.stopPropagation()
+                }}
                 onChange={handleFileChange}
               />
             </div>
@@ -251,7 +335,13 @@ export default function DeedAnalysisPage() {
 
             <button
               type="button"
-              onClick={runAnalysis}
+              onClick={() => {
+                void (async () => {
+                  const ok = await ensureDocumentConsent()
+                  if (!ok) return
+                  void runAnalysis()
+                })()
+              }}
               disabled={!uploadedFile || isAnalyzing}
               className="mt-6 w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
@@ -267,17 +357,35 @@ export default function DeedAnalysisPage() {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3">확인할 6가지 (본질)</h3>
-            <ul className="space-y-2 text-sm text-gray-700">
+            <div className="mb-4">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">등기부등본 핵심 점검 항목 6가지</h3>
+              <p className="text-sm text-gray-600">
+                등기부등본을 AI로 분석해 계약 전 반드시 확인해야 할 주요 항목을 점검합니다.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
               {CHECK_ITEMS_TEMPLATE.map((item) => (
-                <li key={item.id} className="flex items-center gap-2">
-                  <span className="text-primary-600 font-medium">✓</span>
-                  <span className="font-medium">{item.question}</span>
-                  <span className="text-gray-500">→</span>
-                  <span className="text-gray-600">{item.confirmLabel}</span>
-                </li>
+                <div
+                  key={item.id}
+                  className="border border-gray-200 rounded-lg p-4 hover:border-primary-300 hover:shadow-sm transition-all bg-gray-50/50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
+                      <span className="text-primary-600 font-bold text-sm">{item.id}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-gray-900 mb-1 text-sm leading-snug">
+                        {item.question}
+                      </h4>
+                      <div className="mt-2 px-3 py-1.5 bg-white rounded border border-gray-200">
+                        <div className="text-xs text-gray-500 mb-1">확인 항목</div>
+                        <div className="text-sm font-medium text-gray-800">{item.confirmLabel}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </>
       )}
@@ -310,13 +418,32 @@ export default function DeedAnalysisPage() {
           <div className="grid md:grid-cols-3 gap-6">
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-4">등기부등본</h2>
-              {uploadResult?.image_data_url ? (
-                <div className="rounded-lg overflow-hidden border border-gray-200">
-                  <img
-                    src={uploadResult.image_data_url}
-                    alt="등기부등본"
-                    className="w-full max-h-80 object-contain bg-gray-50"
-                  />
+              {uploadResult?.id ? (
+                <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                  {uploadResult.sourceMimeType?.includes('pdf') ? (
+                    <iframe
+                      src={`${BACKEND_BASE}/api/deed/documents/${uploadResult.id}/file`}
+                      className="w-full h-80"
+                      title="등기부 원본(PDF)"
+                    />
+                  ) : (
+                    <img
+                      src={`${BACKEND_BASE}/api/deed/documents/${uploadResult.id}/file`}
+                      alt={uploadResult.sourceFilename || '등기부 원본'}
+                      className="w-full max-h-80 object-contain bg-gray-50"
+                    />
+                  )}
+                  <div className="p-2 text-xs text-gray-600 flex items-center justify-between">
+                    <span className="truncate">{uploadResult.sourceFilename || `문서 #${uploadResult.id}`}</span>
+                    <a
+                      className="text-primary-600 hover:underline flex-shrink-0"
+                      href={`${BACKEND_BASE}/api/deed/documents/${uploadResult.id}/file`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      원본 열기
+                    </a>
+                  </div>
                 </div>
               ) : (
                 uploadedFile && (
@@ -326,14 +453,15 @@ export default function DeedAnalysisPage() {
                       alt={uploadedFile.name}
                       className="w-full max-h-80 object-contain bg-gray-50"
                     />
+                    <p className="p-2 text-xs text-gray-600 truncate">{uploadedFile.name}</p>
                   </div>
                 )
               )}
-              {uploadResult?.extracted_text && (
+              {uploadResult?.extractedText && (
                 <details className="mt-4">
                   <summary className="cursor-pointer text-sm font-medium text-gray-700">추출된 텍스트 보기</summary>
                   <pre className="mt-2 p-3 bg-gray-50 rounded text-xs text-gray-600 overflow-auto max-h-48 whitespace-pre-wrap">
-                    {uploadResult.extracted_text}
+                    {uploadResult.extractedText}
                   </pre>
                 </details>
               )}

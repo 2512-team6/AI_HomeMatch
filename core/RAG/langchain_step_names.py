@@ -22,8 +22,8 @@ JSON keys are fixed in English. All natural-language string VALUES must be writt
 Use EXACT keys and types below. Do not add new keys.
 
 {
-  "level": "SAFE | NEED_UNDERSTAND | NEED_REVIEW | NEED_FIX",
-  "color": "green | yellow | orange | red",
+  "level": "SAFE | NEED_UNDERSTAND | NEED_REVIEW",
+  "color": "green | yellow | orange",
 
   "conclusion": "string (Korean, 1-2 sentences, easy for general adults)",
 
@@ -63,12 +63,15 @@ Rules:
   - laws: 0~3 items, law_ids must match them.
   - recommendations:
     - If level is SAFE or NEED_UNDERSTAND: recommendations MUST be [].
-    - If level is NEED_REVIEW or NEED_FIX: 0~2 items.
+    - If level is NEED_REVIEW: 0~2 items.
 - Level guidance:
   - SAFE: evidence is insufficient OR no meaningful risk found.
   - NEED_UNDERSTAND: may confuse parties; mediation may exist; laws/precedents not required.
-  - NEED_REVIEW: if evidence exists across layers, include them as available.
-  - NEED_FIX: if evidence exists and clause is likely unfair/risky, include all available layers and give up to 2 recommendations.
+  - NEED_REVIEW: clause may materially affect rights/obligations AND there is meaningful supporting context; include available sources and give up to 2 recommendations.
+- Color mapping:
+  - SAFE -> green
+  - NEED_UNDERSTAND -> yellow
+  - NEED_REVIEW -> orange
 """
 
 
@@ -123,17 +126,45 @@ def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
     try:
         obj = json.loads(answer)
     except Exception:
-        return inp  # api_server에서 이미 방어 파싱하므로 여기선 그대로 둠
+        # api_server에서 방어 파싱을 하므로 여기서는 그대로 둔다
+        return inp
 
     if not isinstance(obj, dict):
         return inp
 
-    level = obj.get("level")
-    # recommendations 강제
+    # -----------------------------
+    # 1) level / color sanitize (3-level)
+    # -----------------------------
+    raw_level = (obj.get("level") or "").strip().upper()
+
+    # 과거 스키마/과대평가 방어
+    if raw_level == "NEED_FIX":
+        level = "NEED_REVIEW"
+    elif raw_level in ("SAFE", "NEED_UNDERSTAND", "NEED_REVIEW"):
+        level = raw_level
+    else:
+        # 알 수 없는 값이면 중간 단계로 보정
+        level = "NEED_UNDERSTAND"
+
+    obj["level"] = level
+
+    color_map = {
+        "SAFE": "green",
+        "NEED_UNDERSTAND": "yellow",
+        "NEED_REVIEW": "orange",
+    }
+    obj["color"] = color_map[level]
+
+    # -----------------------------
+    # 2) recommendations 강제
+    # -----------------------------
+    # NEED_REVIEW에서만 허용
     if level in ("SAFE", "NEED_UNDERSTAND"):
         obj["recommendations"] = []
 
-    # 길이 제한 강제
+    # -----------------------------
+    # 3) 리스트 길이 제한 강제
+    # -----------------------------
     def _cap_list(key: str, n: int):
         v = obj.get(key, [])
         if isinstance(v, list):
@@ -147,7 +178,9 @@ def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
     _cap_list("laws", 3)
     _cap_list("recommendations", 2)
 
-    # ids를 items와 동기화
+    # -----------------------------
+    # 4) source_id ↔ ids 동기화
+    # -----------------------------
     def _sync_ids(items_key: str, ids_key: str):
         items = obj.get(items_key, [])
         if not isinstance(items, list):
@@ -166,10 +199,13 @@ def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
     _sync_ids("precedents", "precedent_ids")
     _sync_ids("laws", "law_ids")
 
-    # evidence_paragraphs 누락이면 precedents 비우기(규칙 강제)
+    # -----------------------------
+    # 5) precedent evidence 강제
+    # -----------------------------
+    # evidence_paragraphs가 비어 있으면 그 판례는 제거
     precedents = obj.get("precedents", [])
     if isinstance(precedents, list):
-        cleaned = []
+        cleaned: List[Dict[str, Any]] = []
         for p in precedents:
             if not isinstance(p, dict):
                 continue
@@ -179,6 +215,9 @@ def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
         obj["precedents"] = cleaned
         _sync_ids("precedents", "precedent_ids")
 
+    # -----------------------------
+    # 6) 최종 JSON 재직렬화
+    # -----------------------------
     inp["answer"] = json.dumps(obj, ensure_ascii=False)
     return inp
 

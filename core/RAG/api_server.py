@@ -59,7 +59,9 @@ def _get_chain_and_llm():
         )
         return _chain, _llm
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"RAG 초기화 실패(GROQ_API_KEY 등 확인): {e!r}")
+        raise HTTPException(
+            status_code=503, detail=f"RAG 초기화 실패(GROQ_API_KEY 등 확인): {e!r}"
+        )
 
 
 # -----------------------------
@@ -80,7 +82,6 @@ class AnalyzeResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-<<<<<<< HEAD
 _CODE_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
 
 

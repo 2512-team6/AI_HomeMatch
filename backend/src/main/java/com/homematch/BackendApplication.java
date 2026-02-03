@@ -8,15 +8,31 @@ import io.github.cdimascio.dotenv.Dotenv;
 public class BackendApplication {
 
 	public static void main(String[] args) {
-		Dotenv dotenv = Dotenv.load(); // .env 파일 로드
+		// ✅ DB 설정 우선순위:
+		// 1) 시스템 환경변수(DB_URL/DB_USER/DB_PASSWORD)  → 배포 환경(Cloudtype)에서 권장
+		// 2) .env 파일(있을 때만)                           → 로컬 개발 편의용
+		// 3) application.yml 기본값                         → 그 외
+		String dbUrl = System.getenv("DB_URL");
+		String dbUser = System.getenv("DB_USER");
+		String dbPass = System.getenv("DB_PASSWORD");
 
-        String dbUrl = dotenv.get("DB_URL");
-        String dbUser = dotenv.get("DB_USER");
-        String dbPass = dotenv.get("DB_PASSWORD");
+		// .env 파일이 없어도 앱이 뜨도록 ignoreIfMissing
+		Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
 
-        System.setProperty("spring.datasource.url", dbUrl);
-        System.setProperty("spring.datasource.username", dbUser);
-        System.setProperty("spring.datasource.password", dbPass);
+		if (dbUrl == null || dbUrl.isBlank()) dbUrl = dotenv.get("DB_URL");
+		if (dbUser == null || dbUser.isBlank()) dbUser = dotenv.get("DB_USER");
+		if (dbPass == null || dbPass.isBlank()) dbPass = dotenv.get("DB_PASSWORD");
+
+		// 값이 있을 때만 override (없으면 application.yml 기본값 사용)
+		if (dbUrl != null && !dbUrl.isBlank()) {
+			System.setProperty("spring.datasource.url", dbUrl);
+		}
+		if (dbUser != null && !dbUser.isBlank()) {
+			System.setProperty("spring.datasource.username", dbUser);
+		}
+		if (dbPass != null && !dbPass.isBlank()) {
+			System.setProperty("spring.datasource.password", dbPass);
+		}
 
         SpringApplication.run(BackendApplication.class, args);
 	}

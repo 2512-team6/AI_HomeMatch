@@ -115,8 +115,8 @@ export default function PropertyDetailPage() {
 
   const tabs = [
     { id: 'basic', label: '기본 정보' },
-    { id: 'verification', label: '건물·매물 검증' },
-    { id: 'checklist', label: '계약 전 체크리스트 & 현장 검증' },
+    { id: 'verification', label: '건물·매물 점검' },
+    { id: 'checklist', label: '계약 전 체크리스트 & 현장 점검' },
     { id: 'contract', label: '계약서 AI 점검' },
   ]
 
@@ -278,7 +278,7 @@ export default function PropertyDetailPage() {
             </div>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">현장 검증 기능</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-4">현장 점검 기능</h3>
             <div className="space-y-4">
               <button className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-500 text-gray-600">
                 사진 촬영 가이드

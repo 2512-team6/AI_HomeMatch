@@ -169,7 +169,7 @@ export default function HomePage() {
             <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center group-hover:bg-red-200 transition-colors">
               <AlertTriangle className="w-5 h-5 text-red-600" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">계약서 검증</h3>
+            <h3 className="text-lg font-bold text-gray-900">계약서 점검</h3>
           </div>
           <p className="text-sm text-gray-600">중개사 설명 vs 계약서</p>
         </Link>

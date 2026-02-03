@@ -2,6 +2,7 @@ package com.homematch.domain.admin;
 
 import com.homematch.domain.admin.dto.AdminStatsResponse;
 import com.homematch.domain.admin.dto.ChartDataPoint;
+import com.homematch.domain.contract.ContractReviewRepository;
 import com.homematch.domain.listing.ListingRepository;
 import com.homematch.domain.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final ListingRepository listingRepository;
+    private final ContractReviewRepository contractReviewRepository;
 
     @Transactional(readOnly = true)
     public AdminStatsResponse getStats() {
@@ -35,8 +37,8 @@ public class AdminService {
                 })
                 .count();
         
-        // 계약서 검증 건수 (아직 구현되지 않음 - 임시로 0)
-        long totalContracts = 0L;
+        // 계약서 검증 건수 (contract_reviews 테이블의 전체 데이터 수)
+        long totalContracts = contractReviewRepository.count();
         
         // 최근 30일간 일별 통계 데이터 생성
         List<ChartDataPoint> chartData = generateChartData();

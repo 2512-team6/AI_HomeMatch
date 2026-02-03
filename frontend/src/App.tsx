@@ -8,6 +8,7 @@ import ContractReviewPage from './pages/ContractReviewPage'
 import ContractReviewUploadPage from './pages/ContractReviewUploadPage'
 import ContractReviewDetailPage from './pages/ContractReviewDetailPage'
 import DeedAnalysisPage from './pages/DeedAnalysisPage'
+import DocumentConsentPage from './pages/DocumentConsentPage'
 import ResidencyManagementPage from './pages/ResidencyManagementPage'
 import MoveOutPage from './pages/MoveOutPage'
 import MyPage from './pages/MyPage'
@@ -27,6 +28,7 @@ function App() {
       <Route path="/contract/review/upload" element={<Layout><ContractReviewUploadPage /></Layout>} />
       <Route path="/contract/review/detail" element={<Layout><ContractReviewDetailPage /></Layout>} />
       <Route path="/contract/deed" element={<Layout><DeedAnalysisPage /></Layout>} />
+      <Route path="/consents/document" element={<Layout><DocumentConsentPage /></Layout>} />
       <Route path="/residency" element={<Layout><ResidencyManagementPage /></Layout>} />
       <Route path="/moveout" element={<Layout><MoveOutPage /></Layout>} />
       <Route path="/mypage" element={<Layout><MyPage /></Layout>} />

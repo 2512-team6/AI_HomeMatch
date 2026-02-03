@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+
 @Service
 public class ContractCheckService {
 
@@ -16,6 +19,8 @@ public class ContractCheckService {
     public ContractCheckService(FastApiClient fastApiClient) {
         this.fastApiClient = fastApiClient;
     }
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 계약서 특약사항 점검
@@ -33,6 +38,15 @@ public class ContractCheckService {
 
             try {
                 response = fastApiClient.analyzeClause(clause, strict);
+
+                    try {
+                        String json = objectMapper
+                                .writerWithDefaultPrettyPrinter()
+                                .writeValueAsString(response);
+                        System.out.println("[FastAPI response JSON]\n" + json);
+                    } catch (JsonProcessingException e) {
+                        System.out.println("JSON 변환 실패: " + e.getMessage());
+                    }
             } catch (Exception e) {
                 // FastAPI 호출 자체가 실패한 경우
                 response = buildErrorResponse(e);

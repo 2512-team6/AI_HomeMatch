@@ -25,7 +25,7 @@ def get_conn():
 def fetch_cases(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     case_id : 청크의 기본 식별자(최소 메타)
-    title: 검색 결과를 사람이 검증하기위한 최소 단서
+    title: 검색 결과를 사람이 점검하기위한 최소 단서
     """
 
     section_cols = ",\n ".join(SECTION_FIELDS)
