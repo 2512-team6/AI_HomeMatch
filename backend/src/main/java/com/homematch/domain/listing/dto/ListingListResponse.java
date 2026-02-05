@@ -16,6 +16,7 @@ public class ListingListResponse {
     private Integer listingId;
     private String title;
     private String address;
+    private String imageUrl;
     private Long priceDeposit;
     private String leaseType;
     private Long priceRent;

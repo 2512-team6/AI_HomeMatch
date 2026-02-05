@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 
 // 등기부 분석 결과는 Java 백엔드(8080)에 저장합니다.
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8080'
+import { API_BASE } from '../config'
 
 type CheckStatus = 'ok' | 'caution' | 'danger' | 'pending'
 
@@ -99,17 +99,102 @@ export default function DeedAnalysisPage() {
   const [uploadResult, setUploadResult] = useState<DeedDocumentDetailResponse | null>(null)
   const [riskExplanation, setRiskExplanation] = useState<string>('')
   const [riskFlags, setRiskFlags] = useState<string[]>([])
+  const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const consumedAutoOpenRef = useRef(false)
 
   useEffect(() => {
-    const state = location.state as { autoOpenFilePicker?: boolean } | null
+    const state = location.state as { autoOpenFilePicker?: boolean; documentId?: number } | null
     if (view === 'upload' && !consumedAutoOpenRef.current && state?.autoOpenFilePicker) {
       consumedAutoOpenRef.current = true
       fileInputRef.current?.click()
       navigate(location.pathname + location.search, { replace: true, state: null })
     }
   }, [location.pathname, location.state, navigate, view])
+
+  // 설정 > 문서 삭제/보관 설정에서 "결과 보기"로 진입 시 기존 문서 결과 로드
+  const loadedDocumentIdRef = useRef<number | null>(null)
+  useEffect(() => {
+    const state = location.state as { documentId?: number } | null
+    const documentId = state?.documentId
+    if (documentId == null || loadedDocumentIdRef.current === documentId) return
+    const token = localStorage.getItem('accessToken')
+    if (!token) return
+    loadedDocumentIdRef.current = documentId
+    fetch(`${API_BASE}/api/deed/documents/${documentId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => {
+        if (!res.ok) return null
+        return res.json() as Promise<DeedDocumentDetailResponse>
+      })
+      .then((saved) => {
+        if (!saved) return
+        setUploadResult(saved)
+        const parsedRiskFlags: string[] = saved.riskFlagsJson ? JSON.parse(saved.riskFlagsJson) : []
+        const parsedCheckItems: CheckItemResponse[] = saved.checkItemsJson ? JSON.parse(saved.checkItemsJson) : []
+        setRiskFlags(parsedRiskFlags)
+        setRiskExplanation(saved.explanation || '')
+        if (parsedCheckItems && parsedCheckItems.length === 6) {
+          setCheckResults(
+            CHECK_ITEMS_TEMPLATE.map((item, idx) => ({
+              ...item,
+              status: parsedCheckItems[idx].status as CheckStatus,
+              summary: parsedCheckItems[idx].summary,
+            }))
+          )
+        } else {
+          setCheckResults(
+            CHECK_ITEMS_TEMPLATE.map((item, idx) => {
+              const summary = parsedRiskFlags[idx] || (parsedRiskFlags[0] ?? '분석 완료. 아래 위험 신호 설명을 확인하세요.')
+              return { ...item, summary, status: (parsedRiskFlags.length > 0 ? 'caution' : 'ok') as CheckStatus }
+            })
+          )
+        }
+        setView('result')
+        navigate(location.pathname + location.search, { replace: true, state: null })
+      })
+      .catch(() => {
+        loadedDocumentIdRef.current = null
+      })
+  }, [location.state, navigate, location.pathname, location.search])
+
+  // 등기부 원본 파일은 Authorization 필요 → fetch 후 Blob URL로 표시 (img/iframe은 헤더 전송 불가)
+  const fileBlobUrlRef = useRef<string | null>(null)
+  useEffect(() => {
+    const docId = uploadResult?.id
+    const token = localStorage.getItem('accessToken')
+    if (!docId || !token || view !== 'result') {
+      return
+    }
+    let cancelled = false
+    fetch(`${API_BASE}/api/deed/documents/${docId}/file`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => {
+        if (!res.ok) return null
+        return res.blob()
+      })
+      .then((blob) => {
+        if (!blob || cancelled) return
+        const url = URL.createObjectURL(blob)
+        fileBlobUrlRef.current = url
+        setFileBlobUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return url
+        })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      const url = fileBlobUrlRef.current
+      if (url) {
+        URL.revokeObjectURL(url)
+        fileBlobUrlRef.current = null
+      }
+      setFileBlobUrl(null)
+    }
+  }, [uploadResult?.id, view])
 
   const ensureDocumentConsent = async (options?: {
     returnAction?: 'filePicker'
@@ -127,7 +212,7 @@ export default function DeedAnalysisPage() {
 
     try {
       const res = await fetch(
-        `http://localhost:8080/api/consents/required?types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}`,
+        `${API_BASE}/api/consents/required?types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -204,7 +289,7 @@ export default function DeedAnalysisPage() {
       const form = new FormData()
       form.append('file', uploadedFile)
 
-      const uploadRes = await fetch(`${BACKEND_BASE}/api/deed/documents`, {
+      const uploadRes = await fetch(`${API_BASE}/api/deed/documents`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -255,6 +340,10 @@ export default function DeedAnalysisPage() {
   }
 
   const reset = () => {
+    setFileBlobUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
     setView('upload')
     setUploadedFile(null)
     setUploadResult(null)
@@ -420,29 +509,36 @@ export default function DeedAnalysisPage() {
               <h2 className="text-lg font-bold text-gray-900 mb-4">등기부등본</h2>
               {uploadResult?.id ? (
                 <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
-                  {uploadResult.sourceMimeType?.includes('pdf') ? (
-                    <iframe
-                      src={`${BACKEND_BASE}/api/deed/documents/${uploadResult.id}/file`}
-                      className="w-full h-80"
-                      title="등기부 원본(PDF)"
-                    />
+                  {fileBlobUrl ? (
+                    uploadResult.sourceMimeType?.includes('pdf') ? (
+                      <iframe
+                        src={fileBlobUrl}
+                        className="w-full h-80"
+                        title="등기부 원본(PDF)"
+                      />
+                    ) : (
+                      <img
+                        src={fileBlobUrl}
+                        alt={uploadResult.sourceFilename || '등기부 원본'}
+                        className="w-full max-h-80 object-contain bg-gray-50"
+                      />
+                    )
                   ) : (
-                    <img
-                      src={`${BACKEND_BASE}/api/deed/documents/${uploadResult.id}/file`}
-                      alt={uploadResult.sourceFilename || '등기부 원본'}
-                      className="w-full max-h-80 object-contain bg-gray-50"
-                    />
+                    <div className="w-full h-80 flex items-center justify-center text-gray-500">원본 불러오는 중…</div>
                   )}
                   <div className="p-2 text-xs text-gray-600 flex items-center justify-between">
                     <span className="truncate">{uploadResult.sourceFilename || `문서 #${uploadResult.id}`}</span>
-                    <a
-                      className="text-primary-600 hover:underline flex-shrink-0"
-                      href={`${BACKEND_BASE}/api/deed/documents/${uploadResult.id}/file`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      원본 열기
-                    </a>
+                    {fileBlobUrl && (
+                      <a
+                        className="text-primary-600 hover:underline flex-shrink-0"
+                        href={fileBlobUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        download={uploadResult.sourceFilename || undefined}
+                      >
+                        원본 열기
+                      </a>
+                    )}
                   </div>
                 </div>
               ) : (

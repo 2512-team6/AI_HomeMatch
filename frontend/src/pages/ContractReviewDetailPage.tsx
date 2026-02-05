@@ -10,6 +10,7 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
+import { API_BASE } from '../config'
 
 type FileMeta = {
   fileName?: string | null
@@ -22,6 +23,7 @@ type DetailLocationState = {
   startedAt?: number
   specialTerms: string[]
   fileMeta?: FileMeta | null
+  contractAlias?: string
 }
 
 type AnswerJson = {
@@ -74,6 +76,7 @@ export default function ContractReviewDetailPage() {
   const reviewId = state.reviewId ?? Number(searchParams.get('reviewId') || 0)
   const specialTerms = Array.isArray(state.specialTerms) ? state.specialTerms : []
   const fileMeta = state.fileMeta ?? null
+  const contractAliasFromState = state.contractAlias ?? null
 
   const [selectedClause, setSelectedClause] = useState(0)
 
@@ -109,7 +112,7 @@ export default function ContractReviewDetailPage() {
     const t0 = performance.now()
 
     try {
-      const res = await fetch(`http://localhost:8080/api/contract/check`, {
+      const res = await fetch(`${API_BASE}/api/contract/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clauses, strict: false }),
@@ -157,7 +160,7 @@ export default function ContractReviewDetailPage() {
     const token = localStorage.getItem('accessToken')
     if (!token) throw new Error('로그인이 필요합니다.')
 
-    const res = await fetch('http://localhost:8080/api/contracts', {
+    const res = await fetch(`${API_BASE}/api/contracts`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -192,14 +195,14 @@ export default function ContractReviewDetailPage() {
         (aj?.precedent_ids ?? (aj?.precedents ?? []).map((p) => p.source_id)).filter(Boolean) as string[]
       const precedentEvidence = (aj?.precedents ?? [])
         .flatMap((p) => p.evidence_paragraphs ?? [])
-        .filter(Boolean)
+        .filter((x): x is string => typeof x === 'string' && x.trim() !== '')
 
       const lawSummaries = (aj?.laws ?? []).map((l) => l.summary ?? '').filter(Boolean)
       const lawIds = (aj?.law_ids ?? (aj?.laws ?? []).map((l) => l.source_id)).filter(Boolean) as string[]
 
       return {
-        clauseIndex: r.index,
-        clauseText: r.clause,
+        clauseIndex: r.index ?? 0,
+        clauseText: (r.clause != null && String(r.clause).trim() !== '') ? String(r.clause) : '',
         level: toContractLevel(aj?.level),
         conclusion: aj?.conclusion ?? null,
 
@@ -219,7 +222,7 @@ export default function ContractReviewDetailPage() {
       }
     })
 
-    const res = await fetch(`http://localhost:8080/api/contracts/${contractId}/clause-analysis-results:bulk`, {
+    const res = await fetch(`${API_BASE}/api/contracts/${contractId}/clause-analysis-results:bulk`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -243,7 +246,7 @@ export default function ContractReviewDetailPage() {
       setSaving(true)
       setSaveError(null)
 
-      const contractAlias = `계약서_${reviewId || Date.now()}`
+      const contractAlias = (contractAliasFromState?.trim() || `계약서_${reviewId || Date.now()}`)
       const specialTermCount = analysisResults.length
 
       const { contractId } = await createContract({

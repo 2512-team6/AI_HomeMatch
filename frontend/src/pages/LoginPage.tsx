@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import logoHouseImage from '../assets/logo_house.png';
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import logoHouseImage from '../assets/logo_house.png'
+import { API_BASE } from '../config'
 
 export default function LoginPage() {
   // 1. 입력값 관리를 위한 상태(State) 선언
@@ -12,7 +13,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:8080/api/auth/login", {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

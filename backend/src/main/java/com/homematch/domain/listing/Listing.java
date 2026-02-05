@@ -29,6 +29,18 @@ public class Listing {
     @Column(nullable = false, length = 200)
     private String address;
 
+    @Column(name = "image_url", length = 512)
+    private String imageUrl;
+
+    @Column(name = "sub_image_url_1", length = 512)
+    private String subImageUrl1;
+
+    @Column(name = "sub_image_url_2", length = 512)
+    private String subImageUrl2;
+
+    @Column(name = "sub_image_url_3", length = 512)
+    private String subImageUrl3;
+
     @Column(nullable = false, precision = 10, scale = 7)
     private BigDecimal lat;
 

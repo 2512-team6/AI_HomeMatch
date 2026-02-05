@@ -19,15 +19,22 @@ public class DeedFastApiClient {
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final boolean enabled;
 
     public DeedFastApiClient(
             WebClient.Builder webClientBuilder,
-            @Value("${fastapi.base-url}") String baseUrl
+            @Value("${fastapi.base-url:}") String baseUrl
     ) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+        this.enabled = baseUrl != null && !baseUrl.isBlank();
+        this.webClient = enabled ? webClientBuilder.baseUrl(baseUrl).build() : null;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
     }
 
     public JsonNode upload(MultipartFile file) {
+        if (!enabled) throw new FastApiDisabledException();
         try {
             MultipartBodyBuilder builder = new MultipartBodyBuilder();
             builder.part("file", new ByteArrayResource(file.getBytes()) {
@@ -58,6 +65,7 @@ public class DeedFastApiClient {
     }
 
     public JsonNode riskAnalysis(long documentId) {
+        if (!enabled) throw new FastApiDisabledException();
         try {
             String raw = webClient.post()
                     .uri("/documents/{id}/risk-analysis", documentId)

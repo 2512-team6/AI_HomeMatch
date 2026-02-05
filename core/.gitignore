@@ -3,7 +3,7 @@ dataset
 pages
 .env
 json
-벡터DB생성/chroma_store
-벡터DB생성/__pycache__
+__pycache__
 RAG/__pycache__
-json_DB저장코드/
+register/__pycache__
+json_DB저장코드

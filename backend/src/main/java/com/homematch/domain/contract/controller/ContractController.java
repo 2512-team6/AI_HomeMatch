@@ -28,7 +28,15 @@ public class ContractController {
             @PathVariable Long contractId,
             @Valid @RequestBody BulkClauseAnalysisSaveRequest req
     ) {
-        contractService.saveClauseAnalysisBulk(contractId, req);
-        return ResponseEntity.ok().build();
+        System.out.println("[clause-analysis:bulk] 진입 contractId=" + contractId + ", rows=" + (req.getRows() != null ? req.getRows().size() : 0));
+        try {
+            contractService.saveClauseAnalysisBulk(contractId, req);
+            System.out.println("[clause-analysis:bulk] Controller 정상 반환");
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            System.err.println("[clause-analysis:bulk] Controller 예외: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
 }

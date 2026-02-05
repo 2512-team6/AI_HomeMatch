@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
+import { API_BASE } from '../config'
 
 type ConsentStatusResponse = {
   hasAll: boolean
@@ -79,7 +80,7 @@ export default function DocumentConsentPage() {
       setAlreadyAgreed(false)
       try {
         const res = await fetch(
-          `http://localhost:8080/api/consents/required?types=${encodeURIComponent(
+          `${API_BASE}/api/consents/required?types=${encodeURIComponent(
             typesKey
           )}&version=${encodeURIComponent(version)}`,
           {
@@ -148,7 +149,7 @@ export default function DocumentConsentPage() {
       setError(null)
 
       for (const t of types) {
-        const res = await fetch('http://localhost:8080/api/consents/agree', {
+        const res = await fetch(`${API_BASE}/api/consents/agree`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,

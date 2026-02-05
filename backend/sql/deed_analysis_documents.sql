@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS deed_analysis_documents (
 
   source_filename VARCHAR(255) NULL,
   source_mime_type VARCHAR(100) NULL,
+  source_file_path VARCHAR(512) NULL COMMENT 'images 폴더 내 상대 경로',
 
   extracted_text LONGTEXT NULL,
 

@@ -67,8 +67,7 @@ public class DeedController {
         String token = authHeader.replace("Bearer ", "");
         Integer userNo = deedService.getUserIdFromToken(token);
         DeedAnalysisDocument doc = deedService.getEntityForFile(userNo, id);
-
-        byte[] bytes = doc.getSourceFileBlob();
+        byte[] bytes = deedService.getFileBytes(doc);
         if (bytes == null || bytes.length == 0) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }

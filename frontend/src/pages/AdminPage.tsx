@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Shield, Users, Home, FileText, TrendingUp } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { API_BASE } from '../config'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 interface ChartDataPoint {
@@ -52,7 +53,7 @@ export default function AdminPage() {
         return
       }
 
-      const response = await fetch('http://localhost:8080/api/admin/stats', {
+      const response = await fetch(`${API_BASE}/api/admin/stats`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

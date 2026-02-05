@@ -18,6 +18,10 @@ public class ListingResponse {
     private String owner;
     private String title;
     private String address;
+    private String imageUrl;
+    private String subImageUrl1;
+    private String subImageUrl2;
+    private String subImageUrl3;
     private BigDecimal lat;
     private BigDecimal lng;
     private Long priceDeposit;

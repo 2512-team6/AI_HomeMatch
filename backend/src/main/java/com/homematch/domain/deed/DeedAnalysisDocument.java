@@ -28,6 +28,10 @@ public class DeedAnalysisDocument {
     @Column(name = "source_mime_type", length = 100)
     private String sourceMimeType;
 
+    /** images 폴더 내 상대 경로 (예: deed/1/123_filename.pdf). DB는 URL/경로만 저장, 파일은 images에 저장 */
+    @Column(name = "source_file_path", length = 512)
+    private String sourceFilePath;
+
     @Lob
     @Column(name = "source_file_blob", columnDefinition = "LONGBLOB")
     private byte[] sourceFileBlob;
@@ -79,6 +83,14 @@ public class DeedAnalysisDocument {
 
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    public void setSourceFilePath(String sourceFilePath) {
+        this.sourceFilePath = sourceFilePath;
+    }
+
+    public void setSourceMimeType(String sourceMimeType) {
+        this.sourceMimeType = sourceMimeType;
     }
 
     public void softDelete() {

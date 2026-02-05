@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Download, Info, FileText, Scale, Check, X, Calendar } from 'lucide-react'
 import './MoveOutPage.css'
+import { API_BASE } from '../config'
 
 interface EntryStatusRecord {
   id: string
@@ -190,6 +191,24 @@ interface MoveoutChecklist {
   notes: string | null
 }
 
+interface HousingContract {
+  contractStartDate: string | null
+  contractEndDate: string | null
+}
+
+interface DepositManagement {
+  id: number
+  depositAmount: number
+  moveoutDate: string | null
+  status: string
+  expectedReturnDate: string | null
+  actualReturnDate: string | null
+  returnedAmount: number | null
+  deductionAmount: number | null
+  deductionReason: string | null
+  notes: string | null
+}
+
 export default function MoveOutPage() {
   const [modalKey, setModalKey] = useState<string | null>(null)
   const [isScheduleGuideOpen, setIsScheduleGuideOpen] = useState<boolean>(false)
@@ -198,6 +217,10 @@ export default function MoveOutPage() {
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [isInitializing, setIsInitializing] = useState<boolean>(false)
   const hasInitialized = useRef<boolean>(false)
+  // 거주관리 계약 기간 → 퇴실관리 예상 반환일 연동
+  const [contract, setContract] = useState<HousingContract | null>(null)
+  const [depositManagement, setDepositManagement] = useState<DepositManagement | null>(null)
+  const [isSettingExpectedDate, setIsSettingExpectedDate] = useState<boolean>(false)
   
   // API 호출 헬퍼 함수
   const getAuthHeaders = () => {
@@ -214,7 +237,7 @@ export default function MoveOutPage() {
       const token = localStorage.getItem('accessToken')
       if (!token) return null
 
-      const response = await fetch('http://localhost:8080/api/moveout/checklists', {
+      const response = await fetch(`${API_BASE}/api/moveout/checklists`, {
         headers: getAuthHeaders()
       })
 
@@ -240,7 +263,7 @@ export default function MoveOutPage() {
       }
 
       setIsLoading(true)
-      const response = await fetch(`http://localhost:8080/api/moveout/checklists/${id}`, {
+      const response = await fetch(`${API_BASE}/api/moveout/checklists/${id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ isCompleted })
@@ -298,7 +321,7 @@ export default function MoveOutPage() {
 
       // 체크리스트 생성 (순차적으로 실행)
       for (const item of moveOutItems) {
-        await fetch('http://localhost:8080/api/moveout/checklists', {
+        await fetch(`${API_BASE}/api/moveout/checklists`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({
@@ -310,7 +333,7 @@ export default function MoveOutPage() {
       }
 
       for (const item of restorationItems) {
-        await fetch('http://localhost:8080/api/moveout/checklists', {
+        await fetch(`${API_BASE}/api/moveout/checklists`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({
@@ -331,13 +354,80 @@ export default function MoveOutPage() {
     }
   }
 
+  // 거주관리 계약 기간 불러오기 (예상 반환일 연동용)
+  const loadContract = async () => {
+    try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) return
+      const response = await fetch(`${API_BASE}/api/residency/contract`, {
+        headers: getAuthHeaders()
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setContract({
+          contractStartDate: data.contractStartDate || null,
+          contractEndDate: data.contractEndDate || null
+        })
+      }
+    } catch (error) {
+      console.error('계약 기간 불러오기 실패:', error)
+    }
+  }
+
+  // 보증금 관리 불러오기 (예상 반환일 표시/설정용)
+  const loadDepositManagement = async () => {
+    try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) return
+      const response = await fetch(`${API_BASE}/api/moveout/deposit-management`, {
+        headers: getAuthHeaders()
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setDepositManagement(data)
+      } else {
+        setDepositManagement(null)
+      }
+    } catch (error) {
+      console.error('보증금 관리 불러오기 실패:', error)
+      setDepositManagement(null)
+    }
+  }
+
+  // 계약 종료일을 예상 반환일로 설정 (보증금 관리 레코드가 있을 때만)
+  const setExpectedReturnDateFromContract = async () => {
+    if (!depositManagement || !contract?.contractEndDate) return
+    try {
+      setIsSettingExpectedDate(true)
+      const response = await fetch(
+        `${API_BASE}/api/moveout/deposit-management/${depositManagement.id}`,
+        {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ expectedReturnDate: contract.contractEndDate })
+        }
+      )
+      if (response.ok) {
+        await loadDepositManagement()
+        alert('예상 반환일이 계약 종료일로 설정되었습니다.')
+      } else {
+        alert('설정에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('예상 반환일 설정 실패:', error)
+      alert('설정 중 오류가 발생했습니다.')
+    } finally {
+      setIsSettingExpectedDate(false)
+    }
+  }
+
   // 입주 상태 기록 불러오기 (API에서)
   const loadEntryStatusRecords = async () => {
     try {
       const token = localStorage.getItem('accessToken')
       if (!token) return
 
-      const response = await fetch('http://localhost:8080/api/moveout/entry-status-records', {
+      const response = await fetch(`${API_BASE}/api/moveout/entry-status-records`, {
         headers: getAuthHeaders()
       })
 
@@ -365,6 +455,15 @@ export default function MoveOutPage() {
     const token = localStorage.getItem('accessToken')
     if (token) {
       loadEntryStatusRecords()
+    }
+  }, [])
+
+  // 거주관리 계약 기간·보증금 관리 불러오기 (예상 반환일 연동)
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken')
+    if (token) {
+      loadContract()
+      loadDepositManagement()
     }
   }, [])
 
@@ -700,7 +799,29 @@ export default function MoveOutPage() {
 
           <div className="text-sm text-gray-700">
             현재: 정산 중<br />
-            예상 반환일: 2024-08-15
+            예상 반환일:{' '}
+            {depositManagement?.expectedReturnDate
+              ? formatDateShort(depositManagement.expectedReturnDate)
+              : contract?.contractEndDate
+                ? (
+                  <>
+                    <span className="text-gray-600">
+                      {formatDateShort(contract.contractEndDate)}
+                      <span className="ml-1 text-xs">(거주관리 계약 종료일 기준)</span>
+                    </span>
+                    {depositManagement && (
+                      <button
+                        type="button"
+                        onClick={setExpectedReturnDateFromContract}
+                        disabled={isSettingExpectedDate}
+                        className="ml-2 px-2 py-1 text-xs bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        {isSettingExpectedDate ? '설정 중…' : depositManagement?.expectedReturnDate ? '계약 종료일로 변경' : '이 날짜로 예상 반환일 설정'}
+                      </button>
+                    )}
+                  </>
+                )
+                : '— (거주관리에서 계약 기간을 등록하면 여기에 표시됩니다)'}
           </div>
         </div>
 

@@ -1,6 +1,16 @@
 import { useMemo, useState, useEffect } from 'react'
-import { User, FileText, Trash2, ShieldCheck } from 'lucide-react'
+import { User, FileText, Trash2, ShieldCheck, FileCheck, Eye, Archive, ArchiveRestore, Loader2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { API_BASE } from '../config'
+
+interface DeedDoc {
+  id: number
+  sourceFilename: string | null
+  sourceMimeType: string | null
+  archived: boolean
+  createdAt: string
+  riskFlagsJson: string | null
+}
 
 interface UserData {
   name: string
@@ -34,6 +44,10 @@ export default function MyPage() {
   const [consentError, setConsentError] = useState<string | null>(null)
   const [consentStatus, setConsentStatus] = useState<ConsentStatusResponse | null>(null)
 
+  const [deedDocs, setDeedDocs] = useState<DeedDoc[]>([])
+  const [deedDocsLoading, setDeedDocsLoading] = useState(false)
+  const [deedDocActionId, setDeedDocActionId] = useState<number | null>(null)
+
   const tabs = useMemo(
     () => [
       { id: 'profile', label: '프로필 관리', icon: User },
@@ -47,6 +61,12 @@ export default function MyPage() {
   useEffect(() => {
     loadUserData()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      loadDeedDocs()
+    }
+  }, [activeTab])
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -71,7 +91,7 @@ export default function MyPage() {
         return
       }
 
-      const response = await fetch('http://localhost:8080/api/user/me', {
+      const response = await fetch(`${API_BASE}/api/user/me`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -120,7 +140,7 @@ export default function MyPage() {
         return
       }
 
-      const response = await fetch('http://localhost:8080/api/user/me', {
+      const response = await fetch(`${API_BASE}/api/user/me`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -173,7 +193,7 @@ export default function MyPage() {
       }
 
       const res = await fetch(
-        `http://localhost:8080/api/consents/required?types=${encodeURIComponent(DOCUMENT_CONSENT_TYPE)}&version=${encodeURIComponent(DOCUMENT_CONSENT_VERSION)}`,
+        `${API_BASE}/api/consents/required?types=${encodeURIComponent(DOCUMENT_CONSENT_TYPE)}&version=${encodeURIComponent(DOCUMENT_CONSENT_VERSION)}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -233,7 +253,7 @@ export default function MyPage() {
         return
       }
 
-      const res = await fetch('http://localhost:8080/api/consents/withdraw', {
+      const res = await fetch(`${API_BASE}/api/consents/withdraw`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -267,6 +287,74 @@ export default function MyPage() {
       setConsentError(e instanceof Error ? e.message : '동의 철회에 실패했습니다.')
     } finally {
       setConsentActionLoading(false)
+    }
+  }
+
+  const loadDeedDocs = async () => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) return
+    setDeedDocsLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/deed/documents`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const list = (await res.json()) as DeedDoc[]
+        setDeedDocs(list)
+      } else {
+        setDeedDocs([])
+      }
+    } catch {
+      setDeedDocs([])
+    } finally {
+      setDeedDocsLoading(false)
+    }
+  }
+
+  const handleDeedArchive = async (id: number, archived: boolean) => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) return
+    setDeedDocActionId(id)
+    try {
+      const res = await fetch(`${API_BASE}/api/deed/documents/${id}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ archived }),
+      })
+      if (res.ok) await loadDeedDocs()
+      else alert('보관 설정 변경에 실패했습니다.')
+    } catch {
+      alert('보관 설정 변경에 실패했습니다.')
+    } finally {
+      setDeedDocActionId(null)
+    }
+  }
+
+  const handleDeedDelete = async (id: number) => {
+    if (!confirm('이 등기부등본 분석 문서를 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.')) return
+    const token = localStorage.getItem('accessToken')
+    if (!token) return
+    setDeedDocActionId(id)
+    try {
+      const res = await fetch(`${API_BASE}/api/deed/documents/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      if (res.ok) await loadDeedDocs()
+      else alert('삭제에 실패했습니다.')
+    } catch {
+      alert('삭제에 실패했습니다.')
+    } finally {
+      setDeedDocActionId(null)
+    }
+  }
+
+  const formatDate = (s: string) => {
+    try {
+      const d = new Date(s)
+      return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return s
     }
   }
 
@@ -399,7 +487,7 @@ export default function MyPage() {
         {activeTab === 'settings' && (
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">문서 삭제/보관 설정</h2>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <h3 className="font-bold text-gray-900 mb-2">자동 삭제 설정</h3>
                 <select className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg">
@@ -409,11 +497,87 @@ export default function MyPage() {
                   <option>수동 삭제만</option>
                 </select>
               </div>
+
               <div>
-                <h3 className="font-bold text-gray-900 mb-2">보관 문서 목록</h3>
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">보관 중인 문서가 없습니다.</p>
-                </div>
+                <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                  <FileCheck className="w-5 h-5 text-primary-600" />
+                  등기부등본 분석 문서
+                </h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  업로드·분석한 등기부등본 목록입니다. 결과 보기, 보관/해제, 삭제를 할 수 있습니다.
+                </p>
+                {deedDocsLoading ? (
+                  <div className="border border-gray-200 rounded-lg p-8 flex items-center justify-center gap-2 text-gray-600">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>목록 불러오는 중…</span>
+                  </div>
+                ) : deedDocs.length === 0 ? (
+                  <div className="border border-gray-200 rounded-lg p-6 text-center text-gray-600">
+                    <FileCheck className="w-10 h-10 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">분석한 등기부등본이 없습니다.</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/contract/deed')}
+                      className="mt-3 text-primary-600 hover:underline text-sm font-medium"
+                    >
+                      등기부등본 분석 페이지로 이동
+                    </button>
+                  </div>
+                ) : (
+                  <ul className="border border-gray-200 rounded-lg divide-y divide-gray-200">
+                    {deedDocs.map((doc) => (
+                      <li key={doc.id} className="p-4 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50/50">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-gray-900 truncate">
+                            {doc.sourceFilename || `문서 #${doc.id}`}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {formatDate(doc.createdAt)}
+                            {doc.archived && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                                보관
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => navigate('/contract/deed', { state: { documentId: doc.id } })}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          >
+                            <Eye className="w-4 h-4" />
+                            결과 보기
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deedDocActionId === doc.id}
+                            onClick={() => handleDeedArchive(doc.id, !doc.archived)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title={doc.archived ? '보관 해제' : '보관'}
+                          >
+                            {deedDocActionId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : doc.archived ? (
+                              <ArchiveRestore className="w-4 h-4" />
+                            ) : (
+                              <Archive className="w-4 h-4" />
+                            )}
+                            {doc.archived ? '보관 해제' : '보관'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deedDocActionId === doc.id}
+                            onClick={() => handleDeedDelete(doc.id)}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>

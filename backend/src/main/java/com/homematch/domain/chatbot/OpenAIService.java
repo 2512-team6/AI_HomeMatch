@@ -55,9 +55,21 @@ public class OpenAIService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OpenAIService() {
-        Dotenv dotenv = Dotenv.load();
-        this.apiKey = dotenv.get("OPENAI_API_KEY", "");
-        this.fineTunedModelId = dotenv.get("OPENAI_FINETUNED_MODEL_ID", "");
+        String apiKeyVal = "";
+        String fineTunedVal = "";
+        try {
+            Dotenv dotenv = Dotenv.load();
+            apiKeyVal = dotenv.get("OPENAI_API_KEY", "");
+            fineTunedVal = dotenv.get("OPENAI_FINETUNED_MODEL_ID", "");
+        } catch (Exception e) {
+            // .env 없음(Cloudtype 등 배포 환경) → 환경 변수 사용
+            apiKeyVal = System.getenv("OPENAI_API_KEY");
+            if (apiKeyVal == null) apiKeyVal = "";
+            fineTunedVal = System.getenv("OPENAI_FINETUNED_MODEL_ID");
+            if (fineTunedVal == null) fineTunedVal = "";
+        }
+        this.apiKey = apiKeyVal;
+        this.fineTunedModelId = fineTunedVal;
 
         this.webClient = WebClient.builder()
                 .baseUrl("https://api.openai.com/v1")

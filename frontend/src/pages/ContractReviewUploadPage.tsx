@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FileText, Upload } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import SpecialTermsInput from '../components/SpecialTermsInput'
+import { API_BASE } from '../config'
 
 type UploadLocationState = {
   autoOpenFilePicker?: boolean
@@ -21,6 +22,7 @@ export default function ContractReviewUploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const consumedAutoOpenRef = useRef(false)
   const [specialTerms, setSpecialTerms] = useState<string[]>([''])
+  const [contractAlias, setContractAlias] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
@@ -49,7 +51,7 @@ export default function ContractReviewUploadPage() {
 
     try {
       const res = await fetch(
-        `http://localhost:8080/api/consents/required?types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}`,
+        `${API_BASE}/api/consents/required?types=${encodeURIComponent('DATA_STORE')}&version=${encodeURIComponent('v1.0')}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -127,15 +129,17 @@ export default function ContractReviewUploadPage() {
 
     const finalSpecialTerms = specialTerms.map((t) => t.trim()).filter((t) => t !== '')
 
+    const reviewId = Date.now()
+    const startedAt = Date.now()
+
     // 파일이 없고 특약만 있는 경우는 기존 로직 유지
     if (uploadedFiles.length === 0) {
-      const reviewId = Date.now()
-      const startedAt = Date.now()
       navigate(`/contract/review/detail?reviewId=${reviewId}`, {
         state: {
           reviewId,
           startedAt,
           specialTerms: finalSpecialTerms,
+          contractAlias: contractAlias.trim() || undefined,
         },
       })
       return
@@ -144,10 +148,10 @@ export default function ContractReviewUploadPage() {
     const firstFile = uploadedFiles[0]
     const fileMeta: FileMeta | null = firstFile
       ? {
-        fileName: firstFile.name ?? null,
-        mimeType: firstFile.type ?? null,
-        fileSizeBytes: Number.isFinite(firstFile.size) ? firstFile.size : null,
-      }
+          fileName: firstFile.name ?? null,
+          mimeType: firstFile.type ?? null,
+          fileSizeBytes: Number.isFinite(firstFile.size) ? firstFile.size : null,
+        }
       : null
 
     navigate(`/contract/review/detail?reviewId=${reviewId}`, {
@@ -156,6 +160,7 @@ export default function ContractReviewUploadPage() {
         startedAt,
         specialTerms: finalSpecialTerms,
         fileMeta,
+        contractAlias: contractAlias.trim() || undefined,
       },
     })
   }
@@ -278,6 +283,19 @@ export default function ContractReviewUploadPage() {
               </p>
             </div>
           </div>
+        </div>
+
+        <div className="mt-6">
+          <label className="block text-sm font-semibold text-gray-900 mb-2">계약서 별명</label>
+          <input
+            type="text"
+            value={contractAlias}
+            onChange={(e) => setContractAlias(e.target.value)}
+            placeholder="예: OO아파트 전세계약서"
+            className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none"
+            maxLength={100}
+          />
+          <p className="mt-1 text-xs text-gray-500">저장 시 계약서를 구분할 이름입니다. (선택)</p>
         </div>
 
         <div className="mt-6">

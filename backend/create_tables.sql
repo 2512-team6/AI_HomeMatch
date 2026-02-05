@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS listings (
     owner VARCHAR(100) NOT NULL COMMENT '임대인',
     title VARCHAR(200) NOT NULL COMMENT '매물 제목',
     address VARCHAR(200) NOT NULL COMMENT '주소',
+    image_url VARCHAR(512) NULL COMMENT '매물 메인 이미지 URL',
+    sub_image_url_1 VARCHAR(512) NULL COMMENT '서브 이미지 1',
+    sub_image_url_2 VARCHAR(512) NULL COMMENT '서브 이미지 2',
+    sub_image_url_3 VARCHAR(512) NULL COMMENT '서브 이미지 3',
     lat DECIMAL(10, 7) NULL COMMENT '위도',
     lng DECIMAL(10, 7) NULL COMMENT '경도',
     price_deposit BIGINT NOT NULL COMMENT '보증금',
@@ -44,7 +48,6 @@ CREATE TABLE IF NOT EXISTS listings (
     INDEX idx_price_deposit (price_deposit),
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='매물 정보 테이블';
-
 
 --------------- 퇴실관리 테이블 생성 --------------------
 /* =========================================================
@@ -296,6 +299,7 @@ CREATE TABLE IF NOT EXISTS deed_analysis_documents (
 
   source_filename VARCHAR(255) NULL,
   source_mime_type VARCHAR(100) NULL,
+  source_file_path VARCHAR(512) NULL COMMENT 'images 폴더 내 상대 경로',
 
   extracted_text LONGTEXT NULL,
 
@@ -381,22 +385,25 @@ CREATE TABLE IF NOT EXISTS contracts (
 
 /* =========================================================
  * 18. 특약사항 분석 결과 테이블
+ * - level: 애플리케이션 ContractLevel enum과 동일 (SAFE, NEEDS_UNDERSTANDING, NEEDS_REVIEW)
+ * - clause_text: NOT NULL, 빈 문자열 허용 (null 전달 시 애플리케이션에서 ''로 저장)
+ * - (contract_id, clause_index): 동일 계약 재저장 시 기존 행 삭제 후 삽입
  * ========================================================= */
 CREATE TABLE IF NOT EXISTS clause_analysis_results (
   clause_analysis_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   contract_id        BIGINT UNSIGNED NOT NULL,
-  clause_index       INT NOT NULL,                     
-  clause_text        LONGTEXT NOT NULL,                
+  clause_index       INT NOT NULL,
+  clause_text        LONGTEXT NOT NULL,
   level              ENUM('SAFE','NEEDS_UNDERSTANDING','NEEDS_REVIEW') NOT NULL,
   conclusion         TEXT NULL,
-  risk_points        JSON NULL,            
-  mediation_summaries TEXT NULL,            
-  mediation_case_ids  JSON NULL,            
-  precedent_summaries TEXT NULL,            
-  precedent_case_ids  JSON NULL,            
-  precedent_evidence  JSON NULL,            
-  law_summaries       TEXT NULL,            
-  law_ids             JSON NULL,           
+  risk_points        JSON NULL,
+  mediation_summaries TEXT NULL,
+  mediation_case_ids  JSON NULL,
+  precedent_summaries TEXT NULL,
+  precedent_case_ids  JSON NULL,
+  precedent_evidence  JSON NULL,
+  law_summaries       TEXT NULL,
+  law_ids             JSON NULL,
   recommended_clause_text LONGTEXT NULL,
   created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY ux_clause_contract_idx (contract_id, clause_index),

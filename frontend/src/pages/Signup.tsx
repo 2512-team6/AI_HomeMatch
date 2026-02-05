@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import logoHouseImage from '../assets/logo_house.png';
+import { useState } from "react"
+import { useNavigate } from "react-router-dom"
+import logoHouseImage from '../assets/logo_house.png'
+import { API_BASE } from '../config'
 
 const Signup = () => {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ const Signup = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:8080/api/auth/signup", {
+      const response = await fetch(`${API_BASE}/api/auth/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

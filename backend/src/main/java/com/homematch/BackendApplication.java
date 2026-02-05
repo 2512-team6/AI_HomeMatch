@@ -34,7 +34,16 @@ public class BackendApplication {
 			System.setProperty("spring.datasource.password", dbPass);
 		}
 
-        SpringApplication.run(BackendApplication.class, args);
+		// FastAPI base-url: 환경변수 → .env → (없으면 application.yml 기본값)
+		String fastApiBaseUrl = System.getenv("FASTAPI_BASE_URL");
+		if (fastApiBaseUrl == null || fastApiBaseUrl.isBlank()) {
+			fastApiBaseUrl = dotenv.get("FASTAPI_BASE_URL");
+		}
+		if (fastApiBaseUrl != null && !fastApiBaseUrl.isBlank()) {
+			System.setProperty("FASTAPI_BASE_URL", fastApiBaseUrl);
+		}
+
+		SpringApplication.run(BackendApplication.class, args);
 	}
 
 }

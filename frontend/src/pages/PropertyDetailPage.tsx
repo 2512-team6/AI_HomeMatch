@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
 import { MapPin } from 'lucide-react'
 import { useParams } from 'react-router-dom'
+import { API_BASE } from '../config'
 
 interface ListingDetail {
   listingId: number
   owner: string
   title: string
   address: string
+  imageUrl: string | null
+  subImageUrl1: string | null
+  subImageUrl2: string | null
+  subImageUrl3: string | null
   lat: number
   lng: number
   priceDeposit: number
@@ -47,7 +52,7 @@ export default function PropertyDetailPage() {
   const fetchListingDetail = async (listingId: number) => {
     try {
       setLoading(true)
-      const response = await fetch(`http://localhost:8080/api/listings/${listingId}`)
+      const response = await fetch(`${API_BASE}/api/listings/${listingId}`)
       if (!response.ok) {
         throw new Error('매물 정보를 불러오는데 실패했습니다.')
       }
@@ -170,10 +175,27 @@ export default function PropertyDetailPage() {
         <div className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <div className="h-96 bg-gray-200 rounded-lg mb-4"></div>
+              {/* 메인 이미지 1개 + 서브 이미지 3개 */}
+              <div className="h-96 bg-gray-200 rounded-lg mb-3 overflow-hidden">
+                {listing.imageUrl ? (
+                  <img
+                    src={listing.imageUrl}
+                    alt={listing.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-400">메인 이미지 없음</div>
+                )}
+              </div>
               <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-24 bg-gray-200 rounded"></div>
+                {[listing.subImageUrl1, listing.subImageUrl2, listing.subImageUrl3].map((url, i) => (
+                  <div key={i} className="h-24 bg-gray-200 rounded-lg overflow-hidden">
+                    {url ? (
+                      <img src={url} alt={`서브 ${i + 1}`} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">서브 {i + 1}</div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

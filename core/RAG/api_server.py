@@ -8,9 +8,19 @@ from typing import Any, Dict, Optional, Tuple
 
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="AI_HomeMatch RAG API")
+
+
+@app.exception_handler(Exception)
+def _handle_unhandled(_request: Any, exc: Exception) -> JSONResponse:
+    """500 발생 시 실제 예외 내용을 body에 담아 반환 (원인 파악용)."""
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "type": type(exc).__name__},
+    )
 
 # core/register.py 를 import할 수 있도록 core 경로를 sys.path에 추가
 _CORE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

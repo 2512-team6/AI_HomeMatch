@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, Minimize2, FileText, Scale, Home, Package, ChevronLeft, ChevronRight } from 'lucide-react'
 import logoHouseImage from '../assets/logo_house.png'
+import { API_BASE } from '../config'
 
 export type ChatTopic = 'contract_review' | 'deed_analysis' | 'residency' | 'moveout' | null
 
@@ -176,7 +177,7 @@ export default function FloatingChatbot() {
       return
     }
     setHasSentMessageInCurrentTopic(false)
-    fetch(`http://localhost:8080/api/chatbot/suggested-questions?topic=${selectedTopic}`)
+    fetch(`${API_BASE}/api/chatbot/suggested-questions?topic=${selectedTopic}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((list: { label: string }[]) => setSuggestedQuestions(Array.isArray(list) ? list : []))
       .catch(() => setSuggestedQuestions([]))
@@ -271,7 +272,7 @@ export default function FloatingChatbot() {
     try {
       const token = localStorage.getItem('accessToken')
       if (!token) throw new Error('로그인이 필요합니다.')
-      const response = await fetch('http://localhost:8080/api/chatbot/messages/stream', {
+      const response = await fetch(`${API_BASE}/api/chatbot/messages/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

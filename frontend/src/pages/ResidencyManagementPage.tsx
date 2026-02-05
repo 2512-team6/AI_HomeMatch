@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Upload, Calendar, Edit2, Plus, X, Trash2, Info, CheckCircle } from 'lucide-react'
+import { API_BASE } from '../config'
 
 interface HousingCost {
   rent: number // 월세
@@ -59,7 +60,7 @@ export default function ResidencyManagementPage() {
       const token = localStorage.getItem('accessToken')
       if (!token) return
 
-      const response = await fetch('http://localhost:8080/api/moveout/entry-status-records', {
+      const response = await fetch(`${API_BASE}/api/moveout/entry-status-records`, {
         headers: getAuthHeaders()
       })
 
@@ -186,7 +187,7 @@ export default function ResidencyManagementPage() {
       const token = localStorage.getItem('accessToken')
       if (!token) return
 
-      const response = await fetch('http://localhost:8080/api/residency/contract', {
+      const response = await fetch(`${API_BASE}/api/residency/contract`, {
         headers: getAuthHeaders()
       })
 
@@ -210,7 +211,7 @@ export default function ResidencyManagementPage() {
       const token = localStorage.getItem('accessToken')
       if (!token) return
 
-      const response = await fetch('http://localhost:8080/api/residency/cost-settings', {
+      const response = await fetch(`${API_BASE}/api/residency/cost-settings`, {
         headers: getAuthHeaders()
       })
 
@@ -239,7 +240,7 @@ export default function ResidencyManagementPage() {
       const token = localStorage.getItem('accessToken')
       if (!token) return
 
-      const response = await fetch('http://localhost:8080/api/residency/monthly-records', {
+      const response = await fetch(`${API_BASE}/api/residency/monthly-records`, {
         headers: getAuthHeaders()
       })
 
@@ -271,7 +272,7 @@ export default function ResidencyManagementPage() {
       const token = localStorage.getItem('accessToken')
       if (!token) return
 
-      const response = await fetch('http://localhost:8080/api/residency/defect-issues', {
+      const response = await fetch(`${API_BASE}/api/residency/defect-issues`, {
         headers: getAuthHeaders()
       })
 
@@ -301,7 +302,7 @@ export default function ResidencyManagementPage() {
       const token = localStorage.getItem('accessToken')
       if (!token) return
 
-      const response = await fetch('http://localhost:8080/api/residency/agreement-records?limit=10', {
+      const response = await fetch(`${API_BASE}/api/residency/agreement-records?limit=10`, {
         headers: getAuthHeaders()
       })
 
@@ -328,7 +329,7 @@ export default function ResidencyManagementPage() {
       if (!token) return
       setIsTimelinesLoading(true)
 
-      const response = await fetch(`http://localhost:8080/api/residency/defect-issues/${issueId}/timelines`, {
+      const response = await fetch(`${API_BASE}/api/residency/defect-issues/${issueId}/timelines`, {
         headers: getAuthHeaders()
       })
 
@@ -360,7 +361,7 @@ export default function ResidencyManagementPage() {
       return
     }
 
-    const response = await fetch(`http://localhost:8080/api/residency/defect-issues/${issueId}/timelines`, {
+    const response = await fetch(`${API_BASE}/api/residency/defect-issues/${issueId}/timelines`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -403,7 +404,7 @@ export default function ResidencyManagementPage() {
       return
     }
 
-    const response = await fetch('http://localhost:8080/api/residency/agreement-records', {
+    const response = await fetch(`${API_BASE}/api/residency/agreement-records`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -459,7 +460,7 @@ export default function ResidencyManagementPage() {
       return
     }
 
-    const response = await fetch(`http://localhost:8080/api/residency/defect-issues/${issueId}`, {
+    const response = await fetch(`${API_BASE}/api/residency/defect-issues/${issueId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ riskLevel })
@@ -589,7 +590,7 @@ export default function ResidencyManagementPage() {
           'Authorization': headers['Authorization'] ? `Bearer ${headers['Authorization'].substring(7, 27)}...` : '없음'
         })
 
-        const response = await fetch('http://localhost:8080/api/residency/contract', {
+        const response = await fetch(`${API_BASE}/api/residency/contract`, {
           method: 'POST',
           headers: headers,
           body: JSON.stringify({
@@ -655,7 +656,7 @@ export default function ResidencyManagementPage() {
       }
 
       // 주거비 설정 저장
-      const response = await fetch('http://localhost:8080/api/residency/cost-settings', {
+      const response = await fetch(`${API_BASE}/api/residency/cost-settings`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -703,7 +704,7 @@ export default function ResidencyManagementPage() {
         
         if (currentRecord) {
           // 기존 기록의 납부일 업데이트
-          await fetch(`http://localhost:8080/api/residency/monthly-records`, {
+          await fetch(`${API_BASE}/api/residency/monthly-records`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({
@@ -734,7 +735,7 @@ export default function ResidencyManagementPage() {
             
             if (existingRecord) {
               // 기존 기록이 있으면 납부일만 업데이트
-              await fetch(`http://localhost:8080/api/residency/monthly-records`, {
+              await fetch(`${API_BASE}/api/residency/monthly-records`, {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
@@ -750,7 +751,7 @@ export default function ResidencyManagementPage() {
               })
             } else {
               // API로 월별 기록 생성
-              await fetch('http://localhost:8080/api/residency/monthly-records', {
+              await fetch(`${API_BASE}/api/residency/monthly-records`, {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
@@ -974,7 +975,7 @@ export default function ResidencyManagementPage() {
         return
       }
 
-      const response = await fetch('http://localhost:8080/api/moveout/entry-status-records', {
+      const response = await fetch(`${API_BASE}/api/moveout/entry-status-records`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -1069,7 +1070,7 @@ export default function ResidencyManagementPage() {
         return
       }
 
-      const response = await fetch(`http://localhost:8080/api/moveout/entry-status-records/${id}`, {
+      const response = await fetch(`${API_BASE}/api/moveout/entry-status-records/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       })
@@ -1181,8 +1182,8 @@ export default function ResidencyManagementPage() {
 
       const isEditing = editingIssueId !== null
       const url = isEditing 
-        ? `http://localhost:8080/api/residency/defect-issues/${editingIssueId}`
-        : 'http://localhost:8080/api/residency/defect-issues'
+        ? `${API_BASE}/api/residency/defect-issues/${editingIssueId}`
+        : `${API_BASE}/api/residency/defect-issues`
       
       const method = isEditing ? 'PUT' : 'POST'
 
