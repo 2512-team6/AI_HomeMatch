@@ -89,7 +89,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().permitAll()
             )
-            .addFilterBefore(simpleCorsFilter, org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter.class);
+            .addFilterBefore(simpleCorsFilter, org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter.class)
+            // JWT 만료 시 401 + TOKEN_EXPIRED 응답으로 세션 만료 UX 지원
+            .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

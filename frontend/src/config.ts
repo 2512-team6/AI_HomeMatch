@@ -5,11 +5,11 @@
  */
 
 // 로컬 개발용 주소
-// export const API_BASE = import.meta.env.DEV
-//   ? ''
-//   : (import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8080')
-
-// 로컬 네트워크 공유용 주소
 export const API_BASE = import.meta.env.DEV
   ? ''
-  : (import.meta.env.VITE_BACKEND_BASE_URL || 'http://192.168.0.32:8080')
+  : (import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8080')
+
+// 로컬 네트워크 공유용 주소
+// export const API_BASE = import.meta.env.DEV
+//   ? ''
+//   : (import.meta.env.VITE_BACKEND_BASE_URL || 'http://192.168.0.32:8080')

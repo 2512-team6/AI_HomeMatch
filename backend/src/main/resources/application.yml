@@ -29,7 +29,7 @@ spring:
 
 jwt:
   secret: my-super-secret-key-my-super-secret-key
-  expiration: 10800000 # 1시간 (ms)
+  expiration: 600 # 1시간 (ms)
 
 # 등기부등본 AI 분석용 FastAPI. 기본값 localhost:8000(로컬). 배포에서 끄려면 FASTAPI_BASE_URL= 로 비우기
 fastapi:
