@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Iterable, Set
 
-from precedent_repo import PrecedentRecord
+from .precedent_repo import PrecedentRecord
 
 
 # -----------------------------

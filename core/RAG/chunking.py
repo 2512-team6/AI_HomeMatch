@@ -7,8 +7,8 @@ from typing import Iterable, List, Optional, Tuple
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from config import RAG, DataKind
-from db_read import iter_documents
+from .config import RAG, DataKind
+from .db_read import iter_documents
 
 
 def _normalize_text(s: str) -> str:

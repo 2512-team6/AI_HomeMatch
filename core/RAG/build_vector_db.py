@@ -4,20 +4,12 @@ from __future__ import annotations
 import os
 from typing import Any, Iterable, List, Optional
 
-import chromadb
-from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
-from config import DataKind, RAG
-from db_read import iter_documents
-from chunking import chunk_documents
-
-
-def get_chroma_client() -> chromadb.PersistentClient:
-    return chromadb.PersistentClient(
-        path=str(RAG.chroma_dir),
-        settings=Settings(anonymized_telemetry=False),
-    )
+from .config import DataKind, RAG
+from .db_read import iter_documents
+from .chunking import chunk_documents
+from .retriever_chroma import get_chroma_client
 
 
 def get_collection_name(kind: DataKind) -> str:

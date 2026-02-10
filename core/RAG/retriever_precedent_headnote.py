@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional
 from langchain_core.documents import Document
 from sentence_transformers import SentenceTransformer
 
-from config import RAG
-from retriever_chroma import SearchHit, search_chroma
+from .config import RAG
+from .retriever_chroma import SearchHit, search_chroma
 
 
 @dataclass(frozen=True)

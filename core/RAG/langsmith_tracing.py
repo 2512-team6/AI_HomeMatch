@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 
 from langchain_core.runnables import RunnableConfig
 
-from langchain_step_names import build_chain, RagParams
-from llm_client_groq import GroqLLMClient, GroqLLMConfig
+from .langchain_step_names import build_chain, RagParams
+from .llm_client_groq import GroqLLMClient, GroqLLMConfig
 
 
 def main() -> None:

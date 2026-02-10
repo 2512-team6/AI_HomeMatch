@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# RAG 패키지 디렉터리 (실행 cwd와 무관하게 chroma_store 등 경로 고정)
+_RAG_DIR = Path(__file__).resolve().parent
+
 DataKind = Literal["law", "precedent", "mediation"]
 
 
@@ -74,8 +77,8 @@ class DatasetConfig:
 
 @dataclass(frozen=True)
 class RAGConfig:
-    # Storage
-    chroma_dir: Path = Path("chroma_store")
+    # Storage (RAG 패키지 디렉터리 기준 — core 또는 core/RAG 에서 실행해도 동일)
+    chroma_dir: Path = _RAG_DIR / "chroma_store"
 
     # Chunking (현 chunking.py가 공통값만 쓰므로, 여기서는 공통값을 "안전하게" 조정)
     # - 법령 조문은 짧은 편이라 지나치게 큰 chunk_size가 필요 없음
@@ -83,7 +86,7 @@ class RAGConfig:
     chunk_size: int = 1200
     chunk_overlap: int = 150
 
-    # Retrieval
+    # Retrieval (기본 검색 개수: RagParams 기본값으로 사용됨)
     top_k: int = 4
 
     # Embedding model

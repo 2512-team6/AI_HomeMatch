@@ -11,7 +11,7 @@ from pymysql.cursors import DictCursor
 
 from langchain_core.documents import Document
 
-from config import DataKind, RAG, load_db_config
+from .config import DataKind, RAG, load_db_config
 
 
 # -----------------------------
@@ -107,17 +107,31 @@ def _build_page_content(kind: DataKind, row: Dict[str, Any]) -> str:
     return "\n\n".join(parts).strip()
 
 
-def _common_meta(kind: DataKind, row: Dict[str, Any]) -> Dict[str, Any]:
+def _build_meta(
+    kind: DataKind,
+    row: Dict[str, Any],
+    doc_id: str,
+    table: str,
+) -> Dict[str, Any]:
+    """
+    config.RAG.datasets[kind].metadata_fields를 기준으로 메타 구성 (단일 출처).
+    doc_id, table은 Chroma/청크 추적용으로 항상 포함.
+    """
     meta: Dict[str, Any] = {
         "data_kind": kind,
-        "source_year": row.get("source_year"),
-        "source_name": row.get("source_name"),
-        "source_doc": row.get("source_doc"),
-        "page_start": row.get("page_start"),
-        "page_end": row.get("page_end"),
-        "title": row.get("title"),
+        "doc_id": doc_id,
+        "table": table,
     }
-    return {k: v for k, v in meta.items() if v is not None}
+    for field in RAG.datasets[kind].metadata_fields:
+        if field not in row:
+            continue
+        val = row[field]
+        if val is None:
+            continue
+        if hasattr(val, "isoformat") and callable(getattr(val, "isoformat")):
+            val = val.isoformat()
+        meta[field] = val
+    return meta
 
 
 # -----------------------------
@@ -165,13 +179,11 @@ def iter_mediation_documents(
             cur.execute(sql, params)
             for row in cur.fetchall():
                 content = _build_page_content("mediation", row)
-                meta = _common_meta("mediation", row)
-                meta.update(
-                    {
-                        "doc_id": f"mediation:{row['case_id']}",
-                        "pk": row["case_id"],
-                        "table": "mediation_cases",
-                    }
+                meta = _build_meta(
+                    "mediation",
+                    row,
+                    doc_id=f"mediation:{row['case_id']}",
+                    table="mediation_cases",
                 )
                 yield Document(page_content=content, metadata=meta)
 
@@ -225,13 +237,11 @@ def iter_law_documents(
             cur.execute(sql, params)
             for row in cur.fetchall():
                 content = _build_page_content("law", row)
-                meta = _common_meta("law", row)
-                meta.update(
-                    {
-                        "doc_id": f"law:{row['id']}",
-                        "pk": int(row["id"]),
-                        "table": "law_text",
-                    }
+                meta = _build_meta(
+                    "law",
+                    row,
+                    doc_id=f"law:{row['id']}",
+                    table="law_text",
                 )
                 yield Document(page_content=content, metadata=meta)
 
@@ -310,26 +320,12 @@ def iter_precedent_documents(
             cur.execute(sql, params)
             for row in cur.fetchall():
                 content = _build_page_content("precedent", row)
-
-                meta: Dict[str, Any] = {
-                    "data_kind": "precedent",
-                    "doc_id": f"precedent:{row['precedent_id']}",
-                    "pk": row["precedent_id"],
-                    "table": "precedents",
-                    "precedent_id": row["precedent_id"],
-                    "case_name": row.get("case_name"),
-                    "case_number": row.get("case_number"),
-                    "decision_date": (
-                        row.get("decision_date").isoformat()
-                        if row.get("decision_date")
-                        else None
-                    ),
-                    "decision_type": row.get("decision_type"),
-                    "court_name": row.get("court_name"),
-                    "case_type_name": row.get("case_type_name"),
-                    "judgment_type": row.get("judgment_type"),
-                }
-                meta = {k: v for k, v in meta.items() if v is not None}
+                meta = _build_meta(
+                    "precedent",
+                    row,
+                    doc_id=f"precedent:{row['precedent_id']}",
+                    table="precedents",
+                )
                 yield Document(page_content=content, metadata=meta)
 
 

@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 
 from langchain_core.documents import Document
 
-from config import RAG
+from .config import RAG
 
 
 @dataclass(frozen=True)

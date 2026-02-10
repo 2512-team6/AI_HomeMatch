@@ -6,15 +6,15 @@ from typing import Any, Dict, List, Optional
 
 from sentence_transformers import SentenceTransformer
 
-from config import RAG
-from retriever_chroma import search_chroma, SearchHit
-from retriever_precedent_headnote import (
+from .config import RAG
+from .retriever_chroma import search_chroma, SearchHit
+from .retriever_precedent_headnote import (
     retrieve_precedent_headnote,
     PrecedentHeadnoteHit,
 )
-from precedent_repo import fetch_precedents_by_ids, PrecedentRecord
-from evidence_extractor_bm25 import extract_evidence_bm25, EvidenceSpan
-from evidence_filters import rerank_and_filter_evidence, ScoredEvidence
+from .precedent_repo import fetch_precedents_by_ids, PrecedentRecord
+from .evidence_extractor_bm25 import extract_evidence_bm25, EvidenceSpan
+from .evidence_filters import rerank_and_filter_evidence, ScoredEvidence
 
 
 @dataclass(frozen=True)

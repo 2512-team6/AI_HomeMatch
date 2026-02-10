@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from db_read import db_conn
+from .db_read import db_conn
 
 
 @dataclass(frozen=True)

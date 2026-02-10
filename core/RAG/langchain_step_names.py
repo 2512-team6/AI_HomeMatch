@@ -3,83 +3,26 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langchain_core.runnables import RunnableLambda, RunnableSequence
 
-from service_rag import run_layered_rag, LayeredRAGResult
-from prompt_templates import build_messages_for_llm
-from llm_client_groq import GroqLLMClient
+from .config import RAG
+from .service_rag import run_layered_rag, LayeredRAGResult
+from .prompt_templates import build_messages_for_llm
+from .llm_client_groq import GroqLLMClient
 
 
-# ✅ JSON-only 출력 포맷(여기서 강제)
-# - 값(문장)은 한국어
-# - 근거 부족/없으면 해당 배열은 [] 로 두기(억지 채우기 금지)
-JSON_ONLY_OUTPUT_FORMAT = """\
-Return ONLY a valid JSON object (no markdown, no code fences, no extra text).
-JSON keys are fixed in English. All natural-language string VALUES must be written in Korean.
-
-Use EXACT keys and types below. Do not add new keys.
-
-{
-  "level": "SAFE | NEED_UNDERSTAND | NEED_REVIEW",
-  "color": "green | yellow | orange",
-
-  "conclusion": "string (Korean, 1-2 sentences, easy for general adults)",
-
-  "risk_points": ["string"],
-
-  "mediation_cases": [
-    { "summary": "string (Korean)", "source_id": "MED:<doc_id>" }
-  ],
-  "mediation_case_ids": ["MED:<doc_id>"],
-
-  "precedents": [
-    {
-      "summary": "string (Korean)",
-      "source_id": "PREC:<precedent_id>",
-      "evidence_paragraphs": ["string (Korean, taken from PRECEDENT_EVIDENCE)"]
-    }
-  ],
-  "precedent_ids": ["PREC:<precedent_id>"],
-
-  "laws": [
-    { "summary": "string (Korean)", "source_id": "LAW:<doc_id>" }
-  ],
-  "law_ids": ["LAW:<doc_id>"],
-
-  "recommendations": ["string (Korean)"]
-}
-
-Rules:
-- JSON must be parseable by json.loads.
-- Do NOT invent any source_id. source_id must exist in the provided context block exactly.
-- If you cannot find supporting sources in the context, use empty arrays [] for that section.
-- precedents[].evidence_paragraphs MUST come from [PRECEDENT_EVIDENCE] only. If missing/weak, precedents=[] and precedent_ids=[].
-- Limits:
-  - risk_points: 0~3 items.
-  - mediation_cases: 0~2 items, mediation_case_ids must match them.
-  - precedents: 0~2 items, precedent_ids must match them.
-  - laws: 0~3 items, law_ids must match them.
-  - recommendations:
-    - If level is SAFE or NEED_UNDERSTAND: recommendations MUST be [].
-    - If level is NEED_REVIEW: 0~2 items.
-- Level guidance:
-  - SAFE: evidence is insufficient OR no meaningful risk found.
-  - NEED_UNDERSTAND: may confuse parties; mediation may exist; laws/precedents not required.
-  - NEED_REVIEW: clause may materially affect rights/obligations AND there is meaningful supporting context; include available sources and give up to 2 recommendations.
-- Color mapping:
-  - SAFE -> green
-  - NEED_UNDERSTAND -> yellow
-  - NEED_REVIEW -> orange
-"""
+# 출력 포맷은 prompt_templates.OUTPUT_FORMAT 단일 출처 사용 (중복 정의 제거)
 
 
 @dataclass(frozen=True)
 class RagParams:
-    top_k_law: int = 2
-    top_k_precedent: int = 2
-    top_k_mediation: int = 1
+    """검색 개수 기본값은 config.RAG.top_k 사용 (단일 출처)."""
+
+    top_k_law: int = RAG.top_k
+    top_k_precedent: int = RAG.top_k
+    top_k_mediation: int = RAG.top_k
     top_n_evidence_raw: int = 6
     top_n_evidence_final: int = 1
 
@@ -105,11 +48,7 @@ def step_rag(inp: Dict[str, Any]) -> Dict[str, Any]:
 def step_build_messages(inp: Dict[str, Any]) -> Dict[str, Any]:
     rag_result: LayeredRAGResult = inp["rag_result"]
 
-    # ✅ 여기서 output_format을 JSON-only로 강제
-    messages = build_messages_for_llm(
-        rag_result,
-        output_format=JSON_ONLY_OUTPUT_FORMAT,
-    )
+    messages = build_messages_for_llm(rag_result)
     return {**inp, "messages": messages}
 
 
@@ -121,16 +60,38 @@ def _try_parse_json(text: str) -> bool:
         return False
 
 
+def _extract_json_object(s: str) -> Optional[Dict[str, Any]]:
+    """
+    LLM 출력에서 JSON 객체 한 덩어리만 추출해 파싱.
+    앞뒤 설명/키:값 나열이 섞여 있어도 첫 '{' ~ 마지막 '}' 구간으로 파싱 시도.
+    """
+    if not (s or s.strip()):
+        return None
+    ss = s.strip()
+    start = ss.find("{")
+    if start == -1:
+        return None
+    end = ss.rfind("}")
+    if end == -1 or end <= start:
+        return None
+    try:
+        obj = json.loads(ss[start : end + 1])
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
 def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
     answer = (inp.get("answer") or "").strip()
+    obj: Optional[Dict[str, Any]] = None
     try:
         obj = json.loads(answer)
     except Exception:
-        # api_server에서 방어 파싱을 하므로 여기서는 그대로 둔다
+        obj = _extract_json_object(answer)
+    if not obj or not isinstance(obj, dict):
         return inp
 
-    if not isinstance(obj, dict):
-        return inp
+    # 이하 기존 정제 로직: color, _ids 등 보강
 
     # -----------------------------
     # 1) level / color sanitize (3-level)
@@ -177,6 +138,14 @@ def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
     _cap_list("precedents", 2)
     _cap_list("laws", 3)
     _cap_list("recommendations", 2)
+
+    # LLM이 배열 키를 안 넣었을 수 있으므로 기본 보강
+    for key in ("mediation_cases", "precedents", "laws"):
+        if key not in obj or not isinstance(obj[key], list):
+            obj[key] = []
+    for key in ("mediation_case_ids", "precedent_ids", "law_ids"):
+        if key not in obj or not isinstance(obj[key], list):
+            obj[key] = []
 
     # -----------------------------
     # 4) source_id ↔ ids 동기화

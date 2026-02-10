@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import List
 
-from evidence_extractor_bm25 import EvidenceSpan
+from .evidence_extractor_bm25 import EvidenceSpan
 
 
 _FORMAL_PATTERNS = [
