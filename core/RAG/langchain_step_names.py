@@ -164,6 +164,22 @@ def step_postprocess(inp: Dict[str, Any]) -> Dict[str, Any]:
                     ids.append(sid)
         obj[ids_key] = ids
 
+    # source_id 접두어로 배열 정리 (LLM이 MED를 precedents에 넣는 등 혼동 시 보정)
+    def _filter_by_prefix(items_key: str, prefix: str) -> None:
+        items = obj.get(items_key, [])
+        if not isinstance(items, list):
+            return
+        filtered = []
+        for it in items:
+            if isinstance(it, dict):
+                sid = (it.get("source_id") or "").strip()
+                if sid.upper().startswith(prefix.upper()):
+                    filtered.append(it)
+        obj[items_key] = filtered
+
+    _filter_by_prefix("mediation_cases", "MED:")
+    _filter_by_prefix("precedents", "PREC:")
+    _filter_by_prefix("laws", "LAW:")
     _sync_ids("mediation_cases", "mediation_case_ids")
     _sync_ids("precedents", "precedent_ids")
     _sync_ids("laws", "law_ids")

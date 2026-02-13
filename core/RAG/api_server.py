@@ -52,8 +52,12 @@ def _get_chain_and_llm():
         return _chain, _llm
 
     try:
-        from .langchain_step_names import build_chain  # type: ignore
-        from .llm_client_groq import GroqLLMClient, GroqLLMConfig  # type: ignore
+        try:
+            from .langchain_step_names import build_chain  # type: ignore
+            from .llm_client_groq import GroqLLMClient, GroqLLMConfig  # type: ignore
+        except ImportError:
+            from langchain_step_names import build_chain  # type: ignore
+            from llm_client_groq import GroqLLMClient, GroqLLMConfig  # type: ignore
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"RAG 의존성 로드 실패: {e!r}")
 
@@ -157,6 +161,9 @@ def _safe_parse_json(answer_raw: str) -> Tuple[Optional[Dict[str, Any]], str]:
 def _parse_rag_params(rag_params: Optional[Dict[str, Any]]):
     try:
         from .langchain_step_names import RagParams  # type: ignore
+    except ImportError:
+        from langchain_step_names import RagParams  # type: ignore
+    try:
         return RagParams(**rag_params) if rag_params else RagParams()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"invalid rag_params: {e!r}")
