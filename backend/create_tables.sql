@@ -389,7 +389,7 @@ CREATE TABLE IF NOT EXISTS contracts (
  * - clause_text: NOT NULL, 빈 문자열 허용 (null 전달 시 애플리케이션에서 ''로 저장)
  * - (contract_id, clause_index): 동일 계약 재저장 시 기존 행 삭제 후 삽입
  * ========================================================= */
-CREATE TABLE IF NOT EXISTS clause_analysis_results (
+CREATE TABLE IF NOT EXISTS cd ..(
   clause_analysis_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   contract_id        BIGINT UNSIGNED NOT NULL,
   clause_index       INT NOT NULL,
